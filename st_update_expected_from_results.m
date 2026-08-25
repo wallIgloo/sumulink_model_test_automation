@@ -1,0 +1,1347 @@
+function R = st_update_expected_from_results(resultObj)
+%ST_UPDATE_EXPECTED_FROM_RESULTS
+% Test execution 결과를 사용하여 실패한 Iteration의 verify expected value를 갱신합니다.
+%
+% 기준:
+%   cfg.ExpectedValueSampleTime 시점의 실제 Harness Outport 값
+%
+% 대상 Action 형식:
+%   verify(A == 0);
+%   verify(A(1) == 0);
+%   verify(data(1,1).NAME == 0);
+%
+% 실제값과 RHS가 다를 때만:
+%
+%   verify(A == 0);
+%
+% 를 예를 들어:
+%
+%   verify(A == 15);
+%
+% 로 변경합니다.
+%
+% 처리 대상:
+%   Test Iteration Outcome == Failed 인 경우만
+%
+% 지원 expected value:
+%   real numeric scalar
+%   logical scalar
+%
+% 지원하지 않는 값은 해당 verify line을 변경하지 않고 결과 Message에 기록합니다.
+
+cfg = st_config();
+
+T = ...
+    st_load_targets( ...
+        cfg.OnlyEnabled);
+
+
+if ~bdIsLoaded(cfg.TopModel)
+
+    load_system( ...
+        cfg.TopModel);
+end
+
+
+st_force_model_stopped( ...
+    cfg.TopModel);
+
+
+sampleTime = ...
+    double(cfg.ExpectedValueSampleTime);
+
+
+if ~isscalar(sampleTime) || ...
+        ~isfinite(sampleTime) || ...
+        sampleTime < 0
+
+    error( ...
+        'ExpectedValueSampleTime은 0 이상의 finite scalar여야 합니다.');
+end
+
+
+%% ============================================================
+% Test Case Result 수집
+%% ============================================================
+
+testCaseResults = ...
+    collect_test_case_results( ...
+        resultObj);
+
+
+n = height(T);
+
+TestCaseName = strings(n,1);
+ScenarioName = strings(n,1);
+IterationOutcome = strings(n,1);
+VerifyLineCount = zeros(n,1);
+MismatchCount = zeros(n,1);
+UpdatedCount = zeros(n,1);
+Status = strings(n,1);
+Message = strings(n,1);
+Timestamp = strings(n,1);
+
+
+fprintf('\n');
+fprintf('============================================\n');
+fprintf('Expected Value Auto Update\n');
+fprintf('Sample Time : %.17g sec\n', sampleTime);
+fprintf('============================================\n');
+
+
+%% ============================================================
+% CUT / Test Case 반복
+%% ============================================================
+
+for i = 1:n
+
+    testCaseName = ...
+        char(T.TestCaseName(i));
+
+    scenarioName = ...
+        st_scenario_name( ...
+            T.CUTName(i));
+
+    ownerPath = ...
+        st_normalize_cut_path( ...
+            T.CUTPath(i), ...
+            cfg.TopModel);
+
+    harnessName = ...
+        char(T.HarnessName(i));
+
+
+    TestCaseName(i) = ...
+        string(testCaseName);
+
+    ScenarioName(i) = ...
+        string(scenarioName);
+
+
+    fprintf('\n[%d/%d] %s\n', ...
+        i, ...
+        n, ...
+        testCaseName);
+
+
+    try
+
+        %% ----------------------------------------------------
+        % Test Case Result 찾기
+        %% ----------------------------------------------------
+
+        tcResult = ...
+            find_test_case_result( ...
+                testCaseResults, ...
+                testCaseName);
+
+
+        if isempty(tcResult)
+
+            error( ...
+                'Test Case Result를 찾지 못했습니다: %s', ...
+                testCaseName);
+        end
+
+
+        %% ----------------------------------------------------
+        % Iteration Result 찾기
+        %% ----------------------------------------------------
+
+        iterResult = ...
+            find_iteration_result( ...
+                tcResult, ...
+                scenarioName);
+
+
+        if isempty(iterResult)
+
+            error( ...
+                'Test Iteration Result를 찾지 못했습니다: %s', ...
+                testCaseName);
+        end
+
+
+        outcomeValue = ...
+            double(iterResult.Outcome);
+
+
+        IterationOutcome(i) = ...
+            outcome_to_text( ...
+                outcomeValue);
+
+
+        %% ----------------------------------------------------
+        % Failed Iteration만 갱신
+        %% ----------------------------------------------------
+
+        if outcomeValue ~= 3
+
+            Status(i) = ...
+                'SKIP';
+
+            Message(i) = ...
+                'Iteration is not Failed';
+
+            fprintf('  -> SKIP : Iteration is not Failed\n');
+
+            Timestamp(i) = ...
+                current_timestamp();
+
+            continue;
+        end
+
+
+        %% ----------------------------------------------------
+        % Output Run
+        %% ----------------------------------------------------
+
+        outputRuns = ...
+            getOutputRuns( ...
+                iterResult);
+
+
+        if isempty(outputRuns)
+
+            error( ...
+                ['Simulation Output Run이 없습니다. ' ...
+                 'Harness Outport signal logging 설정을 확인하세요.']);
+        end
+
+
+        %% ----------------------------------------------------
+        % Harness / Assessment Load
+        %% ----------------------------------------------------
+
+        st_force_model_stopped( ...
+            cfg.TopModel);
+
+
+        sltest.harness.load( ...
+            ownerPath, ...
+            harnessName);
+
+
+        assess = ...
+            st_find_assessment_block( ...
+                harnessName);
+
+
+        step2Path = ...
+            [scenarioName '.step2'];
+
+
+        currentAction = ...
+            sltest.testsequence.readStep( ...
+                assess, ...
+                step2Path, ...
+                'Action');
+
+
+        %% ----------------------------------------------------
+        % RHS 갱신
+        %% ----------------------------------------------------
+
+        harnessOutputs = ...
+            st_collect_harness_output_signals( ...
+                harnessName);
+
+
+        [newAction, lineCount, mismatchCount, updatedCount, notes] = ...
+            update_verify_action( ...
+                char(currentAction), ...
+                outputRuns, ...
+                sampleTime, ...
+                harnessOutputs);
+
+
+        VerifyLineCount(i) = ...
+            lineCount;
+
+        MismatchCount(i) = ...
+            mismatchCount;
+
+        UpdatedCount(i) = ...
+            updatedCount;
+
+
+        %% ----------------------------------------------------
+        % 변경사항 저장
+        %% ----------------------------------------------------
+
+        if updatedCount > 0
+
+            sltest.testsequence.editStep( ...
+                assess, ...
+                step2Path, ...
+                'Action', ...
+                newAction);
+
+
+            save_system( ...
+                cfg.TopModel);
+        end
+
+
+        st_close_harness_quiet( ...
+            ownerPath, ...
+            harnessName);
+
+
+        %% ----------------------------------------------------
+        % Result
+        %% ----------------------------------------------------
+
+        Status(i) = ...
+            'OK';
+
+
+        if isempty(notes)
+
+            Message(i) = ...
+                sprintf( ...
+                    'verify=%d, mismatch=%d, updated=%d', ...
+                    lineCount, ...
+                    mismatchCount, ...
+                    updatedCount);
+
+        else
+
+            Message(i) = ...
+                string( ...
+                    sprintf( ...
+                        'verify=%d, mismatch=%d, updated=%d | %s', ...
+                        lineCount, ...
+                        mismatchCount, ...
+                        updatedCount, ...
+                        notes));
+        end
+
+
+        fprintf( ...
+            '  -> OK : verify=%d, mismatch=%d, updated=%d\n', ...
+            lineCount, ...
+            mismatchCount, ...
+            updatedCount);
+
+
+    catch ME
+
+        st_close_harness_quiet( ...
+            ownerPath, ...
+            harnessName);
+
+
+        Status(i) = ...
+            'FAIL';
+
+        Message(i) = ...
+            string(ME.message);
+
+
+        fprintf( ...
+            '  -> FAIL : %s\n', ...
+            ME.message);
+    end
+
+
+    Timestamp(i) = ...
+        current_timestamp();
+end
+
+
+%% ============================================================
+% Result Table
+%% ============================================================
+
+SampleTime = ...
+    repmat( ...
+        sampleTime, ...
+        n, ...
+        1);
+
+
+R = table( ...
+    T.No, ...
+    T.CUTName, ...
+    TestCaseName, ...
+    T.HarnessName, ...
+    ScenarioName, ...
+    SampleTime, ...
+    IterationOutcome, ...
+    VerifyLineCount, ...
+    MismatchCount, ...
+    UpdatedCount, ...
+    Status, ...
+    Message, ...
+    Timestamp, ...
+    'VariableNames', { ...
+        'No', ...
+        'CUTName', ...
+        'TestCaseName', ...
+        'HarnessName', ...
+        'ScenarioName', ...
+        'SampleTime', ...
+        'IterationOutcome', ...
+        'VerifyLineCount', ...
+        'MismatchCount', ...
+        'UpdatedCount', ...
+        'Status', ...
+        'Message', ...
+        'Timestamp'});
+
+
+st_write_result( ...
+    'ExpectedUpdateResult', ...
+    R);
+
+
+fprintf('\n');
+fprintf('============================================\n');
+fprintf('Expected Value Update Result\n');
+fprintf('============================================\n');
+fprintf('Updated lines : %d\n', ...
+    sum(UpdatedCount));
+fprintf('FAIL         : %d\n', ...
+    sum(strcmp(Status, 'FAIL')));
+fprintf('============================================\n');
+
+end
+
+
+%% ============================================================
+% Action Update
+%% ============================================================
+
+function [newAction, lineCount, mismatchCount, updatedCount, notes] = ...
+    update_verify_action( ...
+        currentAction, ...
+        outputRuns, ...
+        sampleTime, ...
+        harnessOutputs)
+
+
+if isempty(currentAction)
+
+    newAction = currentAction;
+    lineCount = 0;
+    mismatchCount = 0;
+    updatedCount = 0;
+    notes = '';
+
+    return;
+end
+
+
+lines = ...
+    regexp( ...
+        currentAction, ...
+        '\r\n|\n|\r', ...
+        'split');
+
+
+sampleCache = ...
+    containers.Map( ...
+        'KeyType', ...
+        'char', ...
+        'ValueType', ...
+        'any');
+
+
+lineCount = 0;
+mismatchCount = 0;
+updatedCount = 0;
+noteList = {};
+
+
+pattern = ...
+    '^\s*verify\((.*?)\s*==\s*(.*?)\);\s*$';
+
+
+for i = 1:numel(lines)
+
+    line = ...
+        lines{i};
+
+
+    token = ...
+        regexp( ...
+            line, ...
+            pattern, ...
+            'tokens', ...
+            'once');
+
+
+    if isempty(token)
+
+        continue;
+    end
+
+
+    lineCount = ...
+        lineCount + 1;
+
+
+    lhs = ...
+        strtrim(token{1});
+
+    rhs = ...
+        strtrim(token{2});
+
+
+    try
+
+        rootToken = ...
+            regexp( ...
+                lhs, ...
+                '^([A-Za-z]\w*)', ...
+                'tokens', ...
+                'once');
+
+
+        if isempty(rootToken)
+
+            error( ...
+                'LHS root symbol을 찾지 못했습니다: %s', ...
+                lhs);
+        end
+
+
+        rootName = ...
+            rootToken{1};
+
+
+        if isKey( ...
+                sampleCache, ...
+                rootName)
+
+            rootValue = ...
+                sampleCache(rootName);
+
+        else
+
+            sig = ...
+                find_logged_signal( ...
+                    outputRuns, ...
+                    rootName, ...
+                    harnessOutputs);
+
+
+            if isempty(sig)
+
+                error( ...
+                    'Logged signal을 찾지 못했습니다: %s', ...
+                    rootName);
+            end
+
+
+            rootValue = ...
+                sample_logged_value( ...
+                    sig.Values, ...
+                    sampleTime);
+
+
+            sampleCache(rootName) = ...
+                rootValue;
+        end
+
+
+        actualValue = ...
+            evaluate_lhs( ...
+                lhs, ...
+                rootName, ...
+                rootValue);
+
+
+        expectedValue = ...
+            parse_expected_literal( ...
+                rhs);
+
+
+        if ~is_supported_scalar(actualValue)
+
+            error( ...
+                '지원하지 않는 actual value type입니다: %s', ...
+                class(actualValue));
+        end
+
+
+        if ~values_equal( ...
+                actualValue, ...
+                expectedValue)
+
+            mismatchCount = ...
+                mismatchCount + 1;
+
+
+            newRhs = ...
+                format_expected_literal( ...
+                    actualValue);
+
+
+            lines{i} = ...
+                sprintf( ...
+                    'verify(%s == %s);', ...
+                    lhs, ...
+                    newRhs);
+
+
+            updatedCount = ...
+                updatedCount + 1;
+        end
+
+
+    catch ME
+
+        noteList{end+1,1} = ...
+            sprintf( ...
+                '%s: %s', ...
+                lhs, ...
+                ME.message); %#ok<AGROW>
+    end
+end
+
+
+newAction = ...
+    strjoin( ...
+        lines, ...
+        sprintf('\n'));
+
+
+if isempty(noteList)
+
+    notes = '';
+
+else
+
+    notes = ...
+        strjoin( ...
+            noteList, ...
+            ' | ');
+end
+
+end
+
+
+%% ============================================================
+% Logged Signal 검색
+%% ============================================================
+
+function sig = ...
+    find_logged_signal( ...
+        outputRuns, ...
+        signalName, ...
+        harnessOutputs)
+
+sig = [];
+
+
+searchNames = {signalName};
+
+
+if ~isempty(harnessOutputs)
+
+    mask = ...
+        strcmp(harnessOutputs.SignalName, signalName) | ...
+        strcmp(harnessOutputs.OutportBlock, signalName);
+
+
+    if any(mask)
+
+        aliases = [ ...
+            harnessOutputs.SignalName(mask); ...
+            harnessOutputs.OutportBlock(mask)];
+
+        aliases = ...
+            aliases( ...
+                strlength(aliases) > 0);
+
+        aliases = ...
+            unique( ...
+                aliases, ...
+                'stable');
+
+        searchNames = [ ...
+            searchNames; ...
+            cellstr(aliases)];
+    end
+end
+
+
+searchNames = ...
+    unique( ...
+        searchNames, ...
+        'stable');
+
+
+for n = 1:numel(searchNames)
+
+    currentName = ...
+        searchNames{n};
+
+
+    for r = 1:numel(outputRuns)
+
+        found = ...
+            getSignalsByName( ...
+                outputRuns(r), ...
+                currentName);
+
+
+    if isempty(found)
+
+        continue;
+    end
+
+
+    if numel(found) == 1
+
+        sig = ...
+            found;
+
+        return;
+    end
+
+
+    %% 동일 이름이 여러 개면 Signals domain 우선
+
+    for k = 1:numel(found)
+
+        try
+
+            if strcmp( ...
+                    char(found(k).Domain), ...
+                    'Signals')
+
+                sig = ...
+                    found(k);
+
+                return;
+            end
+
+        catch
+        end
+    end
+
+
+    sig = ...
+        found(1);
+
+    return;
+end
+
+end
+
+end
+
+
+%% ============================================================
+% Logged Value Sampling
+%% ============================================================
+
+function out = ...
+    sample_logged_value( ...
+        value, ...
+        sampleTime)
+
+
+if isa(value, 'timeseries')
+
+    out = ...
+        sample_timeseries( ...
+            value, ...
+            sampleTime);
+
+    return;
+end
+
+
+if istimetable(value)
+
+    out = ...
+        sample_timetable( ...
+            value, ...
+            sampleTime);
+
+    return;
+end
+
+
+if isstruct(value)
+
+    out = value;
+
+    fieldNames = ...
+        fieldnames(value);
+
+
+    for idx = 1:numel(value)
+
+        for f = 1:numel(fieldNames)
+
+            fieldName = ...
+                fieldNames{f};
+
+            out(idx).(fieldName) = ...
+                sample_logged_value( ...
+                    value(idx).(fieldName), ...
+                    sampleTime);
+        end
+    end
+
+    return;
+end
+
+
+if iscell(value)
+
+    out = cell(size(value));
+
+    for i = 1:numel(value)
+
+        out{i} = ...
+            sample_logged_value( ...
+                value{i}, ...
+                sampleTime);
+    end
+
+    return;
+end
+
+
+%% 이미 sample 값 형태인 경우
+
+out = value;
+
+end
+
+
+function out = ...
+    sample_timeseries( ...
+        ts, ...
+        sampleTime)
+
+
+if isempty(ts.Time)
+
+    error( ...
+        'timeseries에 time data가 없습니다.');
+end
+
+
+timeValues = ...
+    double(ts.Time(:));
+
+
+tol = ...
+    max( ...
+        1e-12, ...
+        abs(sampleTime) * 1e-9);
+
+
+if sampleTime < min(timeValues) - tol || ...
+        sampleTime > max(timeValues) + tol
+
+    error( ...
+        'SampleTime %.17g가 logged time range [%.17g, %.17g] 밖입니다.', ...
+        sampleTime, ...
+        min(timeValues), ...
+        max(timeValues));
+end
+
+
+%% 동일 시점 sample이 여러 개면 마지막 sample 사용
+%% 정확한 시점이 없으면 이전 sample을 사용(ZOH 기준)
+
+idx = ...
+    find( ...
+        timeValues <= sampleTime + tol, ...
+        1, ...
+        'last');
+
+
+if isempty(idx)
+
+    error( ...
+        'SampleTime 이전의 sample을 찾지 못했습니다.');
+end
+
+
+sampleObj = ...
+    getsamples( ...
+        ts, ...
+        idx);
+
+out = ...
+    sampleObj.Data;
+
+end
+
+
+function out = ...
+    sample_timetable( ...
+        tt, ...
+        sampleTime)
+
+
+if height(tt) == 0
+
+    error( ...
+        'timetable에 data가 없습니다.');
+end
+
+
+rowTimes = ...
+    tt.Properties.RowTimes;
+
+
+if isduration(rowTimes)
+
+    timeValues = ...
+        seconds(rowTimes);
+
+elseif isnumeric(rowTimes)
+
+    timeValues = ...
+        double(rowTimes);
+
+else
+
+    error( ...
+        '지원하지 않는 timetable RowTimes type입니다: %s', ...
+        class(rowTimes));
+end
+
+
+timeValues = ...
+    double(timeValues(:));
+
+
+tol = ...
+    max( ...
+        1e-12, ...
+        abs(sampleTime) * 1e-9);
+
+
+if sampleTime < min(timeValues) - tol || ...
+        sampleTime > max(timeValues) + tol
+
+    error( ...
+        'SampleTime %.17g가 timetable time range 밖입니다.', ...
+        sampleTime);
+end
+
+
+idx = ...
+    find( ...
+        timeValues <= sampleTime + tol, ...
+        1, ...
+        'last');
+
+
+row = ...
+    tt(idx,:);
+
+out = ...
+    row.Variables;
+
+
+if iscell(out) && ...
+        numel(out) == 1
+
+    out = ...
+        out{1};
+end
+
+end
+
+
+%% ============================================================
+% LHS 평가
+%% ============================================================
+
+function value = ...
+    evaluate_lhs( ...
+        lhs, ...
+        rootName, ...
+        rootValue)
+
+
+if length(lhs) < length(rootName) || ...
+        ~strncmp( ...
+            lhs, ...
+            rootName, ...
+            length(rootName))
+
+    error( ...
+        'LHS root symbol mismatch: %s', ...
+        lhs);
+end
+
+
+tail = ...
+    lhs(length(rootName)+1:end);
+
+
+expression = ...
+    ['rootValue' tail];
+
+
+value = ...
+    eval(expression);
+
+end
+
+
+%% ============================================================
+% Expected Value Parse / Compare / Format
+%% ============================================================
+
+function value = ...
+    parse_expected_literal( ...
+        text)
+
+text = ...
+    strtrim(text);
+
+
+if strcmpi(text, 'true')
+
+    value = true;
+    return;
+end
+
+
+if strcmpi(text, 'false')
+
+    value = false;
+    return;
+end
+
+
+if strcmpi(text, 'NaN')
+
+    value = NaN;
+    return;
+end
+
+
+if strcmpi(text, 'Inf') || ...
+        strcmpi(text, '+Inf')
+
+    value = Inf;
+    return;
+end
+
+
+if strcmpi(text, '-Inf')
+
+    value = -Inf;
+    return;
+end
+
+
+value = ...
+    str2double(text);
+
+
+if isnan(value) && ...
+        ~strcmpi(text, 'NaN')
+
+    error( ...
+        '지원하지 않는 expected literal입니다: %s', ...
+        text);
+end
+
+end
+
+
+function tf = ...
+    values_equal( ...
+        actualValue, ...
+        expectedValue)
+
+
+if islogical(actualValue)
+
+    tf = ...
+        isequal( ...
+            logical(actualValue), ...
+            logical(expectedValue));
+
+    return;
+end
+
+
+actualDouble = ...
+    double(actualValue);
+
+expectedDouble = ...
+    double(expectedValue);
+
+
+if isnan(actualDouble) && ...
+        isnan(expectedDouble)
+
+    tf = true;
+
+else
+
+    tf = ...
+        actualDouble == expectedDouble;
+end
+
+end
+
+
+function text = ...
+    format_expected_literal( ...
+        value)
+
+
+if islogical(value)
+
+    if value
+
+        text = 'true';
+
+    else
+
+        text = 'false';
+    end
+
+    return;
+end
+
+
+value = ...
+    double(value);
+
+
+if isnan(value)
+
+    text = 'NaN';
+
+elseif isinf(value) && ...
+        value > 0
+
+    text = 'Inf';
+
+elseif isinf(value) && ...
+        value < 0
+
+    text = '-Inf';
+
+else
+
+    text = ...
+        sprintf( ...
+            '%.17g', ...
+            value);
+end
+
+end
+
+
+function tf = ...
+    is_supported_scalar(value)
+
+
+if isa(value, 'embedded.fi')
+
+    tf = ...
+        isscalar(value) && ...
+        isreal(value);
+
+    return;
+end
+
+
+tf = ...
+    (isnumeric(value) || islogical(value)) && ...
+    isscalar(value) && ...
+    isreal(value);
+
+end
+
+
+%% ============================================================
+% Test Result Hierarchy
+%% ============================================================
+
+function resultCells = ...
+    collect_test_case_results( ...
+        resultObj)
+
+
+resultCells = {};
+
+
+testFileResults = ...
+    getTestFileResults( ...
+        resultObj);
+
+
+for f = 1:numel(testFileResults)
+
+    suiteResults = ...
+        getTestSuiteResults( ...
+            testFileResults(f));
+
+
+    for s = 1:numel(suiteResults)
+
+        caseResults = ...
+            getTestCaseResults( ...
+                suiteResults(s));
+
+
+        for c = 1:numel(caseResults)
+
+            resultCells{end+1,1} = ...
+                caseResults(c); %#ok<AGROW>
+        end
+    end
+end
+
+end
+
+
+function tcResult = ...
+    find_test_case_result( ...
+        resultCells, ...
+        testCaseName)
+
+
+tcResult = [];
+
+
+for i = 1:numel(resultCells)
+
+    candidate = ...
+        resultCells{i};
+
+
+    if strcmp( ...
+            char(candidate.Name), ...
+            testCaseName)
+
+        tcResult = ...
+            candidate;
+
+        return;
+    end
+end
+
+end
+
+
+function iterResult = ...
+    find_iteration_result( ...
+        tcResult, ...
+        scenarioName)
+
+
+iterResult = [];
+
+
+iterations = ...
+    getIterationResults( ...
+        tcResult);
+
+
+if isempty(iterations)
+
+    return;
+end
+
+
+%% Scenario가 일치하는 Iteration 우선
+
+for i = 1:numel(iterations)
+
+    try
+
+        tsScenario = ...
+            iterations(i).TestSequenceScenario;
+
+
+        if isstruct(tsScenario) && ...
+                isfield(tsScenario, 'TestSequenceScenario') && ...
+                strcmp( ...
+                    char(tsScenario.TestSequenceScenario), ...
+                    scenarioName)
+
+            iterResult = ...
+                iterations(i);
+
+            return;
+        end
+
+    catch
+    end
+end
+
+
+%% 현재 구조는 Iteration 1 하나이므로 마지막 결과 fallback
+
+iterResult = ...
+    iterations(end);
+
+end
+
+
+function text = ...
+    outcome_to_text(value)
+
+switch value
+
+    case 0
+        text = 'Disabled';
+
+    case 1
+        text = 'Incomplete';
+
+    case 2
+        text = 'Passed';
+
+    case 3
+        text = 'Failed';
+
+    otherwise
+        text = 'Unknown';
+end
+
+end
+
+
+%% ============================================================
+% Common
+%% ============================================================
+
+function text = current_timestamp()
+
+text = ...
+    string( ...
+        datetime( ...
+            'now', ...
+            'Format', ...
+            'yyyy-MM-dd HH:mm:ss'));
+
+end
+
+
+function st_close_harness_quiet( ...
+        ownerPath, ...
+        harnessName)
+
+try
+
+    sltest.harness.close( ...
+        ownerPath, ...
+        harnessName);
+
+catch
+end
+
+end

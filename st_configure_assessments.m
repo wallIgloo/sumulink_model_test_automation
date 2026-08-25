@@ -22,25 +22,18 @@ function R = st_configure_assessments()
 %   Bus 배열 전체를 verify
 %
 %
-% Assessment 구조:
+% Verify 시점:
 %
-%   Scenario:
-%       UT_REQ_{CUTName}_001
+% cfg.VerifyAtSampleTimeOnly == false
+%   step1 --true--> step2
 %
-%   step1
-%       Action 없음
-%
-%       true
-%        |
-%        v
-%
-%   step2
-%       verify(...)
+% cfg.VerifyAtSampleTimeOnly == true
+%   step1 --after(ExpectedValueSampleTime, sec)--> step2
 %
 %
 % Expected value:
-%   현재 기본값은 모두 0
-
+%   초기 생성값은 0
+%   AutoUpdateExpectedOnFail 옵션은 Test 실행 후 별도 처리
 
 cfg = st_config();
 
@@ -59,18 +52,12 @@ if ~bdIsLoaded(cfg.TopModel)
 end
 
 
-%% 모델 상태 정리
-
 st_force_model_stopped( ...
     cfg.TopModel);
 
 
 n = height(T);
 
-
-%% ============================================================
-% 대상 없음
-%% ============================================================
 
 if n == 0
 
@@ -84,29 +71,51 @@ end
 
 
 %% ============================================================
+% Transition condition
+%% ============================================================
+
+if cfg.VerifyAtSampleTimeOnly
+
+    transitionCondition = ...
+        sprintf( ...
+            'after(%.17g, sec)', ...
+            cfg.ExpectedValueSampleTime);
+
+    stopTime = ...
+        str2double( ...
+            cfg.HarnessStopTime);
+
+    if isfinite(stopTime) && ...
+            stopTime <= cfg.ExpectedValueSampleTime
+
+        warning( ...
+            ['VerifyAtSampleTimeOnly=true인데 HarnessStopTime이 ' ...
+             'ExpectedValueSampleTime 이하입니다. ' ...
+             '안정적인 평가를 위해 StopTime을 SampleTime보다 크게 두는 것을 권장합니다.']);
+    end
+
+else
+
+    transitionCondition = ...
+        'true';
+end
+
+
+%% ============================================================
 % 결과 변수
 %% ============================================================
 
 CUTPath = strings(n,1);
-
 AssessmentBlock = strings(n,1);
-
 ScenarioName = strings(n,1);
-
 VerifyMode = strings(n,1);
-
 BusArrayMode = strings(n,1);
-
+TransitionCondition = strings(n,1);
 HarnessOutportCount = zeros(n,1);
-
 VerifyTargetCount = zeros(n,1);
-
 VerifyCount = zeros(n,1);
-
 Status = strings(n,1);
-
 Message = strings(n,1);
-
 Timestamp = strings(n,1);
 
 
@@ -127,14 +136,11 @@ for i = 1:n
             T.CUTPath(i), ...
             cfg.TopModel);
 
-
     harnessName = ...
         char(T.HarnessName(i));
 
-
     cutName = ...
         char(T.CUTName(i));
-
 
     scenarioName = ...
         st_scenario_name( ...
@@ -144,12 +150,12 @@ for i = 1:n
     CUTPath(i) = ...
         string(ownerPath);
 
-
     ScenarioName(i) = ...
         string(scenarioName);
 
+    TransitionCondition(i) = ...
+        string(transitionCondition);
 
-    %% Verify Mode
 
     if cfg.VerifyHarnessOutportsOnly
 
@@ -162,8 +168,6 @@ for i = 1:n
             'ALL_ASSESSMENT_INPUTS';
     end
 
-
-    %% Bus Array Mode
 
     if cfg.VerifyFirstBusElementOnly
 
@@ -183,14 +187,17 @@ for i = 1:n
         n, ...
         cutName);
 
-    fprintf('  CUT      : %s\n', ...
+    fprintf('  CUT        : %s\n', ...
         ownerPath);
 
-    fprintf('  Harness  : %s\n', ...
+    fprintf('  Harness    : %s\n', ...
         harnessName);
 
-    fprintf('  Scenario : %s\n', ...
+    fprintf('  Scenario   : %s\n', ...
         scenarioName);
+
+    fprintf('  Transition : %s\n', ...
+        transitionCondition);
 
 
     try
@@ -220,13 +227,8 @@ for i = 1:n
             st_find_assessment_block( ...
                 harnessName);
 
-
         AssessmentBlock(i) = ...
             string(assess);
-
-
-        fprintf('  Assessment : %s\n', ...
-            assess);
 
 
         %% ====================================================
@@ -244,26 +246,19 @@ for i = 1:n
 
         if cfg.VerifyHarnessOutportsOnly
 
-            %% Harness 최상위 Outport
-
             harnessOutputs = ...
                 st_collect_harness_output_signals( ...
                     harnessName);
 
-
             HarnessOutportCount(i) = ...
                 height(harnessOutputs);
 
-
-            %% Harness Outport와 Assessment Input 교집합
 
             targets = ...
                 select_harness_output_targets( ...
                     assessmentSpecs, ...
                     harnessOutputs);
 
-
-            %% Outport는 있는데 Assessment와 하나도 매칭 안 됨
 
             if height(harnessOutputs) > 0 && ...
                     isempty(targets)
@@ -275,27 +270,20 @@ for i = 1:n
 
         else
 
-            %% Assessment Input 전체 사용
-
             targets = ...
                 assessmentSpecs;
-
 
             HarnessOutportCount(i) = ...
                 0;
         end
 
 
-        %% ====================================================
-        % Verify Target 개수
-        %% ====================================================
-
         VerifyTargetCount(i) = ...
             height(targets);
 
 
         %% ====================================================
-        % verify Action 생성
+        % Verify Action 생성
         %% ====================================================
 
         [verifyAction, verifyCount] = ...
@@ -303,7 +291,6 @@ for i = 1:n
                 targets, ...
                 cfg.TopModel, ...
                 cfg.VerifyFirstBusElementOnly);
-
 
         VerifyCount(i) = ...
             verifyCount;
@@ -316,7 +303,8 @@ for i = 1:n
         st_prepare_assessment_scenario( ...
             assess, ...
             scenarioName, ...
-            verifyAction);
+            verifyAction, ...
+            transitionCondition);
 
 
         %% ====================================================
@@ -327,22 +315,13 @@ for i = 1:n
             cfg.TopModel);
 
 
-        %% ====================================================
-        % Harness Close
-        %% ====================================================
-
         st_close_harness_quiet( ...
             ownerPath, ...
             harnessName);
 
 
-        %% ====================================================
-        % 성공
-        %% ====================================================
-
         Status(i) = ...
             'OK';
-
 
         Message(i) = ...
             sprintf( ...
@@ -366,20 +345,15 @@ for i = 1:n
 
     catch ME
 
-        %% Harness Close 시도
-
         st_close_harness_quiet( ...
             ownerPath, ...
             harnessName);
 
-
         Status(i) = ...
             'FAIL';
 
-
         Message(i) = ...
             string(ME.message);
-
 
         fprintf( ...
             '  -> FAIL : %s\n', ...
@@ -426,6 +400,7 @@ R = table( ...
     ScenarioName, ...
     VerifyMode, ...
     BusArrayMode, ...
+    TransitionCondition, ...
     HarnessOutportCount, ...
     VerifyTargetCount, ...
     VerifyCount, ...
@@ -441,6 +416,7 @@ R = table( ...
         'ScenarioName', ...
         'VerifyMode', ...
         'BusArrayMode', ...
+        'TransitionCondition', ...
         'HarnessOutportCount', ...
         'VerifyTargetCount', ...
         'VerifyCount', ...
@@ -449,27 +425,19 @@ R = table( ...
         'Timestamp'});
 
 
-%% ============================================================
-% 결과 저장
-%% ============================================================
-
 st_write_result( ...
     'AssessmentResult', ...
     R);
 
-
-%% ============================================================
-% Summary
-%% ============================================================
 
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Test Assessment Result\n');
 fprintf('============================================\n');
 fprintf('OK   : %d\n', ...
-    sum(Status == 'OK'));
+    sum(strcmp(Status, 'OK')));
 fprintf('FAIL : %d\n', ...
-    sum(Status == 'FAIL'));
+    sum(strcmp(Status, 'FAIL')));
 fprintf('Total: %d\n', ...
     n);
 fprintf('============================================\n');
@@ -495,35 +463,23 @@ if isempty(assessmentSpecs) || ...
 end
 
 
-%% Signal line 이름 + Outport block 이름 모두 후보로 사용
-
 candidateNames = [ ...
     harnessOutputs.SignalName; ...
     harnessOutputs.OutportBlock];
 
-
-%% 빈 이름 제거
-
 candidateNames = ...
     candidateNames( ...
         strlength(candidateNames) > 0);
-
-
-%% 중복 제거
 
 candidateNames = ...
     unique( ...
         candidateNames, ...
         'stable');
 
-
-%% Assessment Input과 교집합
-
 mask = ...
     ismember( ...
         assessmentSpecs.Name, ...
         candidateNames);
-
 
 targets = ...
     assessmentSpecs(mask,:);
