@@ -1,0 +1,22 @@
+# v0.3 변경 사항
+
+- `cfg.VerifyAllAssessmentInputs` 옵션 추가
+  - `true`: Test Assessment의 모든 Input Data Symbol verify
+  - `false`: CUT 직접 Outport만 verify
+- Assessment 전체 Input 모드에서는 verify 대상 수집을 위해 Top Model compile을 하지 않도록 변경
+- `st_collect_assessment_input_specs.m` 추가
+  - Assessment Input Symbol의 Name / Size / DataType 조회
+  - 숫자 Size를 element width로 변환
+- `st_build_verify_action.m` 추가
+  - scalar / multidimensional verify 생성 로직 공통화
+- model-function compile이 `SimulationStatus='paused'`로 보이는 경우를 고려하도록 `st_force_model_stopped.m` 수정
+  - paused/compiled에서 `term` 우선
+  - 일반 pause일 때만 SimulationCommand stop fallback
+- Test Manager base Inputs 수정
+  - Signal Editor Scenario 기본 선택 OFF
+  - Test Sequence Override Scenario 기본 선택 제거
+  - Scenario는 Table Iteration 1에서만 선택
+- Coverage 설정 수정
+  - Test File 레벨에서 RecordCoverage 활성화 후 Test Case에도 활성화
+- Assessment 결과에 VerifyMode / VerifyTargetCount / VerifyCount 기록
+- MATLAB 문자열 리터럴은 작은따옴표 방식 유지
