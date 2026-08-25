@@ -15,6 +15,12 @@ cfg.TopModel = 'TEST_TARGET_MODEL_NAME';
 cfg.ManagementExcel = fullfile(rootDir, 'TestManagement.xlsx');
 cfg.ManagementSheet = 'Targets';
 
+%% Test execution
+
+% true  : Test Manager 생성 후 Enabled Test Case 전체 실행
+% false : Test Manager까지만 생성
+cfg.RunGeneratedTests = false;
+
 %% Harness / Scenario
 cfg.HarnessStopTime = '0.01';
 cfg.SignalEditorSampleTime = '0.01';

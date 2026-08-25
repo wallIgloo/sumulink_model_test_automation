@@ -55,6 +55,20 @@ if any(strcmp(R5.Status, 'FAIL'))
     error('Test Manager creation failed.');
 end
 
+%% Test 실행 옵션
+
+cfg = st_config();
+
+if cfg.RunGeneratedTests
+
+    fprintf('\n=== Run Generated Tests ===\n');
+
+    st_run_generated_tests();
+
+else
+
+    fprintf('\nTest execution skipped.\n');
+end
 
 fprintf('\n========================================\n');
 fprintf('Full automation complete\n');
