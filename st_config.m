@@ -1,5 +1,5 @@
 function cfg = st_config()
-%ST_CONFIG Existing-harness automation common settings.
+%ST_CONFIG Common settings for Simulink Test automation.
 % Edit this file first.
 
 rootDir = fileparts(mfilename('fullpath'));
@@ -20,9 +20,10 @@ cfg.HarnessStopTime = '0.01';
 cfg.SignalEditorSampleTime = '0.01';
 
 % Assessment verify target mode
-% false : Verify only direct CUT Outports that also exist as Assessment Inputs.
-% true  : Verify every Input Data Symbol registered in the Test Assessment block.
-cfg.VerifyAllAssessmentInputs = true;
+% true  : Verify only Assessment Input symbols that correspond to
+%         top-level Harness Outport blocks/signals.
+% false : Verify every Input Data Symbol registered in Test Assessment.
+cfg.VerifyHarnessOutportsOnly = true;
 
 %% Test Manager
 cfg.TestFile = fullfile(rootDir, [cfg.TopModel '.mldatx']);
