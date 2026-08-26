@@ -1,44 +1,52 @@
+
+## Exhaustive inventory rule
+
+`st_export_subsystem_paths` is a discovery list, not a validity filter. It now includes linked-library internals, Subsystem Reference internals, recursively referenced-model internals, inactive variants, masked subsystems, and commented blocks. `SourceModel` identifies the owning block diagram. The user chooses the desired `FullPath`; `st_pre_validate_targets` remains the gate before harness creation.
+
 # Simulink Test Automation - Work Handoff
 
-## Current baseline: v0.9.1
+## Current baseline: v0.9.3
 
-The current preferred path workflow is deliberately simple and auditable.
+The v0.9.1 Simulink/Test workflow is preserved. v0.9.2 adds a diagnostic layer for company-managed Excel environments where one Excel automation path may fail while another xlwings path succeeds.
 
-1. Select one target model with `st_select_target_model`.
-2. If `Targets.CUTName` is already arranged with Excel native indentation, run `st_fill_temp_paths_from_indent` to flatten that hierarchy into one-line `CUTPath` strings.
-3. If any temporary path is incorrect, run `st_export_subsystem_paths` and use the actual `ModelSubsystems.FullPath` inventory for manual correction.
-4. Run `st_pre_validate_targets` before Harness creation.
-5. Continue with `st_run_from_harness` or `st_run_after_harness`.
+## Excel diagnostic
 
-## Indentation path rule
+Run:
 
-Example Excel display:
-
-```text
-A
-    B
-    C
-        D
-    E
+```matlab
+st_diagnose_excel_access
 ```
 
-The source is the cell format property `IndentLevel`, not spaces in CUTName and not a numeric Depth column.
+Safe read-only methods tested:
 
-Generated one-line paths:
+1. `app.books.open(..., read_only=True)`
+2. `app.api.Workbooks.Open(..., ReadOnly=True)`
+3. `xw.Book(path, read_only=True)`
+4. `xw.Book(path, mode='r')`
 
-```text
-MODEL/A
-MODEL/A/B
-MODEL/A/C
-MODEL/A/C/D
-MODEL/A/E
+Optional:
+
+```matlab
+st_diagnose_excel_access(true)
 ```
 
-`st_fill_temp_paths_from_depth` is now only a compatibility wrapper for the corrected indent-based helper.
+This additionally tests read-write opening without saving and creates/deletes a disposable workbook in the target directory. The original management workbook is not modified.
 
-## Model inventory
+The machine-readable report is:
 
-`st_export_subsystem_paths` writes `ModelSubsystems` with exact subsystem names and actual Simulink hierarchy. Visual hierarchy uses Excel native indentation. Actual Depth and FullPath are retained as data columns.
+```text
+result/ExcelAccessDiagnostic.json
+```
+
+Do not replace all Excel I/O with a guessed method before running this diagnostic on the company PC. Use the successful method as the basis for the next Excel bridge revision.
+
+## Path workflow
+
+1. `st_select_target_model`
+2. `st_fill_temp_paths_from_indent`
+3. `st_export_subsystem_paths` when manual correction is needed
+4. `st_pre_validate_targets`
+5. `st_run_from_harness` or `st_run_after_harness`
 
 ## Test defaults
 
@@ -48,7 +56,3 @@ cfg.RunGeneratedTests = true;
 cfg.AutoUpdateExpectedOnFail = true;
 cfg.RerunAfterExpectedUpdate = true;
 ```
-
-## Important caution
-
-Automatic expected-value update intentionally adopts current simulation output as the new expected RHS. Keep it enabled only when that behavior is desired for the current verification workflow.

@@ -1,5 +1,5 @@
 function R = st_export_subsystem_paths(forceSelectModel)
-%ST_EXPORT_SUBSYSTEM_PATHS Export every subsystem in one model to Excel.
+%ST_EXPORT_SUBSYSTEM_PATHS Export every discoverable subsystem path to Excel.
 %
 % This is the manual-path matching helper.
 %
@@ -18,9 +18,10 @@ function R = st_export_subsystem_paths(forceSelectModel)
 %   No
 %   CUTName       - exact subsystem name; Excel native indentation is applied
 %   RawCUTName    - exact Simulink subsystem name
-%   Depth         - actual hierarchy depth from the model root
+%   SourceModel   - block-diagram root that owns the subsystem
+%   Depth         - actual hierarchy depth from SourceModel
 %   ParentName
-%   RelativePath
+%   RelativePath  - path relative to SourceModel
 %   FullPath
 %
 % Example CUTName display in Excel:
@@ -35,8 +36,17 @@ function R = st_export_subsystem_paths(forceSelectModel)
 % characters are inserted into the cell text. Excel IndentLevel is used.
 %
 % Important:
-%   Depth is calculated from the actual Simulink hierarchy. It does not use
-%   any depth/indent information from TestManagement.xlsx / Targets.
+%   Inventory search is intentionally broad. It searches under masks, inside
+%   library links, inside Subsystem References, inside Model References, all
+%   variant choices including inactive choices, and commented blocks.
+%
+%   Because referenced-model internals are also listed, some FullPath values
+%   are rooted at a referenced model instead of the selected top model. This
+%   is intentional: the inventory is for human selection. Only copy paths that
+%   are valid CUT owners for the intended test workflow.
+%
+%   Depth is calculated from the actual hierarchy of each SourceModel. It does
+%   not use any depth/indent information from TestManagement.xlsx / Targets.
 %
 %   This function does not modify Targets.CUTPath. The intended workflow is
 %   to copy the required FullPath values manually into Targets.CUTPath and
@@ -88,19 +98,35 @@ end
 % Collect every subsystem
 %% ============================================================
 
+% Use the pre-R2025a option names for compatibility with both R2024a and
+% newer releases. In R2025a these names were renamed, but the legacy names
+% continue to work.
 subsystems = ...
     find_system( ...
         modelName, ...
         'LookUnderMasks', 'all', ...
-        'FollowLinks', 'off', ...
+        'FollowLinks', 'on', ...
+        'LookInsideSubsystemReference', 'on', ...
+        'LookUnderModelBlocks', 'on', ...
+        'IncludeCommented', 'on', ...
+        'MatchFilter', @Simulink.match.allVariants, ...
         'Type', 'Block', ...
         'BlockType', 'SubSystem');
 
-% find_system does not include the block diagram itself for BlockType
-% SubSystem, but keep this guard in case model/version behavior differs.
-subsystems = ...
-    subsystems( ...
-        ~strcmp(subsystems, modelName));
+% Remove duplicate identical definition paths that can appear when the same
+% referenced content is reachable through multiple instances.
+if ~isempty(subsystems)
+    subsystems = unique(subsystems, 'stable');
+end
+
+% find_system does not normally include a block diagram itself when filtering
+% by BlockType=SubSystem. Keep a generic root guard for all searched models.
+keep = true(size(subsystems));
+for i = 1:numel(subsystems)
+    candidate = char(subsystems{i});
+    keep(i) = ~strcmp(candidate, st_inventory_root_model(candidate));
+end
+subsystems = subsystems(keep);
 
 
 %% ============================================================
@@ -110,6 +136,7 @@ subsystems = ...
 n = numel(subsystems);
 
 RawCUTName = strings(n,1);
+SourceModel = strings(n,1);
 Depth = zeros(n,1);
 ParentName = strings(n,1);
 RelativePath = strings(n,1);
@@ -123,10 +150,16 @@ for i = 1:n
     RawCUTName(i) = ...
         string(get_param(blockPath, 'Name'));
 
+    sourceModel = ...
+        st_inventory_root_model(blockPath);
+
+    SourceModel(i) = ...
+        string(sourceModel);
+
     Depth(i) = ...
         st_inventory_depth( ...
             blockPath, ...
-            modelName);
+            sourceModel);
 
     parentPath = ...
         char(get_param(blockPath, 'Parent'));
@@ -153,7 +186,7 @@ for i = 1:n
         string( ...
             st_inventory_relative_path( ...
                 blockPath, ...
-                modelName));
+                sourceModel));
 
     FullPath(i) = ...
         string(blockPath);
@@ -169,6 +202,7 @@ end
         lower(FullPath));
 
 RawCUTName = RawCUTName(order);
+SourceModel = SourceModel(order);
 Depth = Depth(order);
 ParentName = ParentName(order);
 RelativePath = RelativePath(order);
@@ -193,6 +227,7 @@ R = table( ...
     No, ...
     CUTName, ...
     RawCUTName, ...
+    SourceModel, ...
     Depth, ...
     ParentName, ...
     RelativePath, ...
@@ -264,6 +299,7 @@ fprintf('Model : %s\n', modelName);
 fprintf('File  : %s\n', modelFile);
 fprintf('Sheet : %s\n', cfg.SubsystemInventorySheet);
 fprintf('Count : %d\n', height(R));
+fprintf('Source models : %d\n', numel(unique(SourceModel)));
 fprintf('============================================\n');
 fprintf('Copy FullPath values into Targets.CUTPath as needed.\n');
 fprintf('Then run st_pre_validate_targets before Harness creation.\n');
@@ -442,6 +478,27 @@ save( ...
     'TopModel', ...
     'ModelFile', ...
     'SelectedAt');
+
+end
+
+
+%% ============================================================
+% Resolve the block-diagram root for any returned subsystem path
+%% ============================================================
+
+function rootModel = st_inventory_root_model(blockPath)
+
+root = bdroot(blockPath);
+
+if isnumeric(root)
+    rootModel = char(get_param(root, 'Name'));
+else
+    rootModel = char(root);
+end
+
+if isempty(rootModel)
+    error('Could not resolve block-diagram root: %s', blockPath);
+end
 
 end
 
