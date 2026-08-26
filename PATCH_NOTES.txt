@@ -1,11 +1,22 @@
-Simulink Test Automation v0.9.5 patch
-Base: GitHub main v0.9.4
+Assessment Scenario Offset Matching Patch
 
-Purpose:
-- Never delete or normalize '/' while matching Harness outputs to Test Assessment Input symbols.
-- Exact raw-name match first.
-- Port-order fallback only when Harness Outport count equals Assessment Input symbol count.
-- Fail with raw-name diagnostics instead of guessing when safe mapping is not possible.
-- AssessmentResult adds PortOrderFallbackCount.
+적용 규칙
+- Assessment Input Port는 실제 Port 번호 기준으로 정렬합니다.
+- CUT에 direct Inport가 있으면 Signal Editor ActiveScenario의 element 개수를 K로 계산합니다.
+- Assessment Port 1..K는 Scenario 입력으로 보고 verify 대상에서 제외합니다.
+- Assessment Port K+1부터 Harness output signal 순서대로 대응합니다.
+- 이름 비교는 하지 않습니다.
+- '/', 공백, 특수문자 제거/치환도 하지 않습니다.
+- verify()에는 Assessment가 실제로 생성한 Symbol 이름을 그대로 사용합니다.
 
-Replace the included files in the project root.
+안전 검사
+- Assessment Port가 1..N 연속인지 확인합니다.
+- Assessment 개수 == Scenario 개수 + usable Harness output 개수인지 확인합니다.
+- 개수가 다르면 추측하지 않고 FAIL 처리합니다.
+
+교체 파일
+1. st_configure_assessments.m
+2. st_collect_assessment_input_specs.m
+3. st_collect_signal_editor_scenario_names.m (신규)
+
+실행 전 프로젝트의 기존 파일을 백업한 뒤 위 3개 파일을 프로젝트 루트에 적용하세요.
