@@ -16,20 +16,23 @@ function R = st_export_subsystem_paths(forceSelectModel)
 %
 % Columns:
 %   No
-%   CUTName       - display name with actual model depth indentation
+%   CUTName       - exact subsystem name; Excel native indentation is applied
 %   RawCUTName    - exact Simulink subsystem name
 %   Depth         - actual hierarchy depth from the model root
 %   ParentName
 %   RelativePath
 %   FullPath
 %
-% Example CUTName display:
+% Example CUTName display in Excel:
 %
-%   - A
-%     - B
-%     - C
-%       - D
-%     - E
+%   A
+%       B
+%       C
+%           D
+%       E
+%
+% CUTName cell values themselves remain A/B/C/D/E. No spaces or prefix
+% characters are inserted into the cell text. Excel IndentLevel is used.
 %
 % Important:
 %   Depth is calculated from the actual Simulink hierarchy. It does not use
@@ -173,31 +176,11 @@ FullPath = FullPath(order);
 
 
 %% ============================================================
-% Build depth-indented CUTName display
+% CUTName keeps the exact subsystem name.
+% Visual hierarchy is applied later with Excel native IndentLevel.
 %% ============================================================
 
-CUTName = strings(n,1);
-
-indentUnit = ...
-    char(cfg.SubsystemInventoryIndent);
-
-prefix = ...
-    char(cfg.SubsystemInventoryPrefix);
-
-for i = 1:n
-
-    indent = ...
-        repmat( ...
-            indentUnit, ...
-            1, ...
-            max(Depth(i) - 1, 0));
-
-    CUTName(i) = ...
-        string([ ...
-            indent ...
-            prefix ...
-            char(RawCUTName(i))]);
-end
+CUTName = RawCUTName;
 
 
 %% ============================================================
@@ -235,6 +218,27 @@ writetable( ...
 
 
 %% ============================================================
+% Apply native Excel indentation to CUTName cells
+%% ============================================================
+
+try
+
+    st_inventory_apply_excel_indent( ...
+        cfg.ManagementExcel, ...
+        cfg.SubsystemInventorySheet, ...
+        Depth, ...
+        cfg.SubsystemInventoryMaxIndent);
+
+catch ME
+
+    warning( ...
+        ['Subsystem inventory was exported, but Excel native indentation ' ...
+         'could not be applied: %s'], ...
+        ME.message);
+end
+
+
+%% ============================================================
 % Result log
 %% ============================================================
 
@@ -264,6 +268,87 @@ fprintf('============================================\n');
 fprintf('Copy FullPath values into Targets.CUTPath as needed.\n');
 fprintf('Then run st_pre_validate_targets before Harness creation.\n');
 fprintf('============================================\n');
+
+end
+
+
+%% ============================================================
+% Apply Excel native IndentLevel to CUTName column
+%% ============================================================
+
+function st_inventory_apply_excel_indent( ...
+    excelFile, ...
+    sheetName, ...
+    depth, ...
+    maxIndent)
+
+excel = [];
+workbook = [];
+
+try
+
+    excel = ...
+        actxserver('Excel.Application');
+
+    excel.Visible = false;
+    excel.DisplayAlerts = false;
+
+    workbook = ...
+        excel.Workbooks.Open(excelFile);
+
+    worksheet = ...
+        workbook.Worksheets.Item(sheetName);
+
+    % CUTName is the second output column of the inventory table.
+    cutNameColumn = 2;
+
+    for i = 1:numel(depth)
+
+        excelRow = i + 1;
+
+        indentLevel = ...
+            max(double(depth(i)) - 1, 0);
+
+        % Excel IndentLevel supports only a limited range.
+        indentLevel = ...
+            min(indentLevel, double(maxIndent));
+
+        worksheet.Cells.Item( ...
+            excelRow, ...
+            cutNameColumn).IndentLevel = indentLevel;
+    end
+
+    workbook.Save();
+    workbook.Close(false);
+    workbook = [];
+
+    excel.Quit();
+    delete(excel);
+    excel = [];
+
+catch ME
+
+    if ~isempty(workbook)
+        try
+            workbook.Close(false);
+        catch
+        end
+    end
+
+    if ~isempty(excel)
+        try
+            excel.Quit();
+        catch
+        end
+
+        try
+            delete(excel);
+        catch
+        end
+    end
+
+    rethrow(ME);
+end
 
 end
 

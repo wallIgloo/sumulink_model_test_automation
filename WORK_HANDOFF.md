@@ -1,6 +1,60 @@
+# Simulink Test Automation - Work Handoff
+
+## Current baseline: v0.9.0
+
+The path workflow now supports a deliberately simple temporary mode based on the `Depth` column in `TestManagement.xlsx / Targets`. This is separate from the recommendation Path Finder.
+
+### Temporary Depth path helper
+
+```matlab
+st_fill_temp_paths_from_depth
+```
+
+- Requires `CUTName`, `CUTPath`, and `Depth` columns.
+- Uses row order plus Depth only.
+- The nearest preceding lower-Depth row is the ancestor.
+- Does not attempt duplicate-name inference.
+- Writes temporary paths even when they do not exist in the model; `DepthPathResult` records whether each exact path exists.
+- Existing/manual paths are preserved by default.
+- `st_fill_temp_paths_from_depth(true)` forces overwrite.
+- Disabled rows still participate in hierarchy context.
+
+### Manual inventory helper
+
+```matlab
+st_export_subsystem_paths
+```
+
+Exports every actual model Subsystem into `ModelSubsystems`. `CUTName` uses Excel native `IndentLevel`; the cell value itself is not prefixed with spaces or dashes.
+
+### Default run behavior
+
+```matlab
+cfg.OverwriteTestFile = true;
+cfg.RunGeneratedTests = true;
+cfg.AutoUpdateExpectedOnFail = true;
+cfg.RerunAfterExpectedUpdate = true;
+```
+
+The normal workflow therefore recreates the Test File, executes generated Test Cases, updates expected verify RHS values on failure, and reruns if an update occurred.
+
+### Recommended flow
+
+```matlab
+st_setup
+st_fill_temp_paths_from_depth   % optional fast initial fill
+st_export_subsystem_paths        % optional manual reference
+st_pre_validate_targets
+st_run_from_harness
+```
+
+If Harnesses already exist, use `st_run_after_harness`.
+
+---
+
 # v0.8 handoff note
 
-For ambiguous CUT names, the preferred safe workflow is manual path matching from a generated subsystem inventory. Run `st_export_subsystem_paths` to recreate `TestManagement.xlsx / ModelSubsystems`. The inventory `CUTName` is visually indented by actual Simulink hierarchy depth, with `RawCUTName` retaining the exact subsystem name. Users manually copy the desired `FullPath` into `Targets.CUTPath`; `st_pre_validate_targets` remains the gate before Harness creation. `st_find_target_paths` is retained only as an optional recommendation helper.
+For ambiguous CUT names, the preferred safe workflow is manual path matching from a generated subsystem inventory. Run `st_export_subsystem_paths` to recreate `TestManagement.xlsx / ModelSubsystems`. The inventory `CUTName` retains the exact subsystem name and is visually indented with Excel native `IndentLevel` using the actual Simulink hierarchy depth. No spaces or prefix characters are inserted into the cell value; `RawCUTName` also retains the exact subsystem name. Users manually copy the desired `FullPath` into `Targets.CUTPath`; `st_pre_validate_targets` remains the gate before Harness creation. `st_find_target_paths` is retained only as an optional recommendation helper.
 
 ---
 

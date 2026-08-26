@@ -1,3 +1,27 @@
+# Changelog
+
+## v0.9.0
+
+- Added `st_fill_temp_paths_from_depth.m`.
+- `Targets.Depth` can now be used to build temporary `CUTPath` values from Excel row order.
+- The nearest preceding row with a lower Depth is treated as an ancestor; Depth gaps are tolerated.
+- Generated temporary paths are checked against the loaded model but are still written when not found, allowing manual correction.
+- Existing/manual CUTPath values are preserved by default; pass `true` to the helper to force overwrite.
+- Disabled rows may still contribute hierarchy context even when `OnlyEnabled=true`.
+- `cfg.OverwriteTestFile = true` by default.
+- `cfg.RunGeneratedTests = true` by default.
+- `cfg.AutoUpdateExpectedOnFail = true` by default.
+- `cfg.RerunAfterExpectedUpdate` remains `true`.
+- Subsystem inventory continues to use Excel native `IndentLevel`, not inserted spaces or `-` prefixes.
+
+# v0.8.1 - Native Excel indent
+
+- `ModelSubsystems.CUTName` no longer contains spaces or `- ` prefixes.
+- `CUTName` keeps the exact Subsystem name and visual hierarchy is applied with Excel `IndentLevel`.
+- Actual hierarchy depth remains in the `Depth` column.
+- `cfg.SubsystemInventoryMaxIndent` controls the visual Excel indentation cap.
+- If Excel automation is unavailable, inventory export still succeeds and only the visual indentation step is skipped with a warning.
+
 # v0.8.0
 
 - Added `st_export_subsystem_paths.m` as a separate manual CUT-path matching helper.

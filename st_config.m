@@ -87,15 +87,29 @@ cfg.PathFinderHighlightSelection = false;
 % The sheet is recreated whenever the inventory is exported.
 cfg.SubsystemInventorySheet = 'ModelSubsystems';
 
-% Indentation used in the display CUTName column.
-% Example:
-%   - A
-%     - B
-%     - C
-%       - D
-%     - E
-cfg.SubsystemInventoryIndent = '  ';
-cfg.SubsystemInventoryPrefix = '- ';
+% CUTName cell text remains the exact Subsystem name.
+% Visual hierarchy is shown with the Excel cell IndentLevel property.
+%
+% Excel supports a limited indentation level. Actual hierarchy depth is
+% always preserved separately in the Depth column even when the visual
+% indentation reaches this maximum.
+cfg.SubsystemInventoryMaxIndent = 15;
+
+
+%% ============================================================
+% Temporary CUTPath generation from Excel Depth
+%% ============================================================
+
+% false:
+%   Preserve non-empty/manual CUTPath cells and fill blank CUTPath only.
+%
+% true:
+%   Replace existing CUTPath cells whenever st_fill_temp_paths_from_depth
+%   is executed. You can also override this per call with true/false.
+cfg.DepthPathOverwriteExisting = false;
+
+% Result sheet written by st_fill_temp_paths_from_depth.
+cfg.DepthPathResultSheet = 'DepthPathResult';
 
 
 %% ============================================================
@@ -179,7 +193,7 @@ cfg.TestFile = ...
 cfg.TestSuiteName = ...
     'New Test Suite 1';
 
-cfg.OverwriteTestFile = false;
+cfg.OverwriteTestFile = true;
 
 
 %% ============================================================
@@ -188,7 +202,7 @@ cfg.OverwriteTestFile = false;
 
 % true  : Run all generated Enabled Test Cases after Test Manager creation.
 % false : Stop after Test Manager creation.
-cfg.RunGeneratedTests = false;
+cfg.RunGeneratedTests = true;
 
 
 %% ============================================================
@@ -201,7 +215,7 @@ cfg.RunGeneratedTests = false;
 %
 % false:
 %   Do not modify expected values automatically.
-cfg.AutoUpdateExpectedOnFail = false;
+cfg.AutoUpdateExpectedOnFail = true;
 
 % Simulation time used as the expected-value sample point [sec].
 cfg.ExpectedValueSampleTime = 0.01;

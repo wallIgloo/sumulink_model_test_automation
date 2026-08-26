@@ -1,38 +1,99 @@
-# v0.8 - Manual subsystem inventory workflow
+# Simulink Test Automation v0.9
 
-The recommended safe path-resolution workflow is now:
+## Recommended path workflow
+
+There are now three independent ways to prepare `Targets.CUTPath`.
+
+### 1. Fast temporary path from Excel Depth
+
+When `Targets` contains a `Depth` column, run:
 
 ```matlab
 st_setup
-st_export_subsystem_paths
+st_fill_temp_paths_from_depth
 ```
-
-`st_export_subsystem_paths` writes every actual Subsystem in the selected model to `TestManagement.xlsx / ModelSubsystems`. The `CUTName` display column includes indentation derived from the real Simulink hierarchy, while `RawCUTName` preserves the exact block name.
 
 Example:
 
 ```text
-- A
-  - B
-  - C
-    - D
-  - E
+CUTName   Depth
+A         0
+B         1
+C         1
+D         2
+E         1
 ```
 
-Copy the required `FullPath` values manually into `Targets.CUTPath`, then run:
+Temporary paths:
+
+```text
+TEST_TARGET_MODEL_NAME/A
+TEST_TARGET_MODEL_NAME/A/B
+TEST_TARGET_MODEL_NAME/A/C
+TEST_TARGET_MODEL_NAME/A/C/D
+TEST_TARGET_MODEL_NAME/A/E
+```
+
+This function does not try to infer the correct model path from duplicate names. It only uses Excel row order and Depth. An exact-path existence check is recorded in `DepthPathResult`; paths that do not exist are still written as temporary values so they can be corrected manually.
+
+By default existing/manual `CUTPath` cells are preserved:
 
 ```matlab
+cfg.DepthPathOverwriteExisting = false;
+```
+
+Force regeneration of every path when needed:
+
+```matlab
+st_fill_temp_paths_from_depth(true)
+```
+
+`Depth` is optional for the rest of the automation; it is required only by this helper.
+
+### 2. Export every real Subsystem path
+
+```matlab
+st_export_subsystem_paths
+```
+
+This recreates `TestManagement.xlsx / ModelSubsystems`. `CUTName` keeps the exact block name while the visual hierarchy is shown with Excel native `IndentLevel`. `Depth`, `ParentName`, `RelativePath`, and `FullPath` are taken from the actual Simulink model.
+
+Use `FullPath` to manually correct any temporary paths that do not match.
+
+### 3. Recommendation Path Finder
+
+`st_find_target_paths` remains available as an optional recommendation-based helper.
+
+## Run defaults in v0.9
+
+The requested run/update behavior is now enabled by default:
+
+```matlab
+cfg.OverwriteTestFile = true;
+cfg.RunGeneratedTests = true;
+cfg.AutoUpdateExpectedOnFail = true;
+cfg.RerunAfterExpectedUpdate = true;
+```
+
+Therefore the normal workflow recreates the Test File, runs generated Test Cases, updates failed verify RHS values from actual results, and reruns when an update occurred. Automatic expected-value adoption should be used intentionally because it treats current model output as the new expected value.
+
+## Recommended full flow
+
+```matlab
+st_setup
+
+% Optional: quickly fill CUTPath from Excel Depth
+st_fill_temp_paths_from_depth
+
+% Optional: inspect every actual subsystem and manually correct CUTPath
+st_export_subsystem_paths
+
 st_pre_validate_targets
+
 st_run_from_harness
 ```
 
-To force selection of another model:
-
-```matlab
-st_export_subsystem_paths(true)
-```
-
-The existing recommendation-based `st_find_target_paths` remains available as an optional helper, but Harness automation itself should rely on manually confirmed `Targets.CUTPath` values when path ambiguity is a concern.
+If Harnesses already exist, use `st_run_after_harness`.
 
 ---
 
