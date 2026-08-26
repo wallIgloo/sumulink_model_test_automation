@@ -97,19 +97,22 @@ cfg.SubsystemInventoryMaxIndent = 15;
 
 
 %% ============================================================
-% Temporary CUTPath generation from Excel Depth
+% Temporary CUTPath generation from Excel native indentation
 %% ============================================================
 
 % false:
 %   Preserve non-empty/manual CUTPath cells and fill blank CUTPath only.
 %
 % true:
-%   Replace existing CUTPath cells whenever st_fill_temp_paths_from_depth
+%   Replace existing CUTPath cells whenever st_fill_temp_paths_from_indent
 %   is executed. You can also override this per call with true/false.
-cfg.DepthPathOverwriteExisting = false;
+%
+% The hierarchy source is CUTName cell IndentLevel, not a numeric Depth
+% column and not leading space characters in the cell value.
+cfg.IndentPathOverwriteExisting = false;
 
-% Result sheet written by st_fill_temp_paths_from_depth.
-cfg.DepthPathResultSheet = 'DepthPathResult';
+% Result sheet written by st_fill_temp_paths_from_indent.
+cfg.IndentPathResultSheet = 'IndentPathResult';
 
 
 %% ============================================================
