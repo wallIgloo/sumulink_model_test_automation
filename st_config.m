@@ -80,6 +80,25 @@ cfg.PathFinderHighlightSelection = false;
 
 
 %% ============================================================
+% Model subsystem inventory export
+%% ============================================================
+
+% Sheet used by st_export_subsystem_paths.
+% The sheet is recreated whenever the inventory is exported.
+cfg.SubsystemInventorySheet = 'ModelSubsystems';
+
+% Indentation used in the display CUTName column.
+% Example:
+%   - A
+%     - B
+%     - C
+%       - D
+%     - E
+cfg.SubsystemInventoryIndent = '  ';
+cfg.SubsystemInventoryPrefix = '- ';
+
+
+%% ============================================================
 % Management Excel
 %% ============================================================
 

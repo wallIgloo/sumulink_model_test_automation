@@ -1,3 +1,41 @@
+# v0.8 - Manual subsystem inventory workflow
+
+The recommended safe path-resolution workflow is now:
+
+```matlab
+st_setup
+st_export_subsystem_paths
+```
+
+`st_export_subsystem_paths` writes every actual Subsystem in the selected model to `TestManagement.xlsx / ModelSubsystems`. The `CUTName` display column includes indentation derived from the real Simulink hierarchy, while `RawCUTName` preserves the exact block name.
+
+Example:
+
+```text
+- A
+  - B
+  - C
+    - D
+  - E
+```
+
+Copy the required `FullPath` values manually into `Targets.CUTPath`, then run:
+
+```matlab
+st_pre_validate_targets
+st_run_from_harness
+```
+
+To force selection of another model:
+
+```matlab
+st_export_subsystem_paths(true)
+```
+
+The existing recommendation-based `st_find_target_paths` remains available as an optional helper, but Harness automation itself should rely on manually confirmed `Targets.CUTPath` values when path ambiguity is a concern.
+
+---
+
 # Simulink Test Automation v0.7
 
 ## Recommended entry flow

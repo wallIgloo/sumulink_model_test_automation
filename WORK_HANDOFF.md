@@ -1,3 +1,9 @@
+# v0.8 handoff note
+
+For ambiguous CUT names, the preferred safe workflow is manual path matching from a generated subsystem inventory. Run `st_export_subsystem_paths` to recreate `TestManagement.xlsx / ModelSubsystems`. The inventory `CUTName` is visually indented by actual Simulink hierarchy depth, with `RawCUTName` retaining the exact subsystem name. Users manually copy the desired `FullPath` into `Targets.CUTPath`; `st_pre_validate_targets` remains the gate before Harness creation. `st_find_target_paths` is retained only as an optional recommendation helper.
+
+---
+
 # Work handoff - Simulink Test Automation v0.6
 
 ## Current project goal

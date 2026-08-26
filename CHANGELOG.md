@@ -1,3 +1,15 @@
+# v0.8.0
+
+- Added `st_export_subsystem_paths.m` as a separate manual CUT-path matching helper.
+- Exports every actual Subsystem from the selected model to `TestManagement.xlsx / ModelSubsystems`.
+- `CUTName` in the inventory is indented using actual Simulink hierarchy depth.
+- Added `RawCUTName`, numeric `Depth`, `ParentName`, `RelativePath`, and `FullPath`.
+- Inventory depth does not use Targets-sheet depth/indent data.
+- Reuses `runtime_target.mat` by default; `st_export_subsystem_paths(true)` forces model reselection.
+- Existing automatic/recommendation Path Finder remains optional.
+
+---
+
 # Changelog
 
 ## v0.7 - Context-aware path recommendation
