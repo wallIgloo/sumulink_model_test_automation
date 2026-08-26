@@ -18,14 +18,13 @@ function [R, Summary] = st_show_assessment_mapping_order(startIndex, endIndex)
 % Example:
 %   [R, Summary] = st_show_assessment_mapping_order(1, 10);
 %
-% Output columns include:
+% Main preview columns:
+%   Order
+%   CompareSignalName
 %   AssessmentPort
 %   AssessmentSymbol
-%   ProposedCUTSide
-%   ProposedCUTPort
-%   CUTPortBlockName
-%   CUTExternalLineName
-%   PairState
+%
+% The detailed return table R still keeps the diagnostic columns as well.
 %
 % PairState:
 %   PAIR              : both sides have an item at this order
@@ -149,6 +148,7 @@ for k = 1:numel(selected)
         ProposedCUTPort = nan(rowCount,1);
         CUTPortBlockName = strings(rowCount,1);
         CUTExternalLineName = strings(rowCount,1);
+        CompareSignalName = strings(rowCount,1);
         PairState = strings(rowCount,1);
 
         if height(A) > 0
@@ -161,6 +161,22 @@ for k = 1:numel(selected)
             ProposedCUTPort(1:height(C)) = C.ProposedCUTPort;
             CUTPortBlockName(1:height(C)) = C.CUTPortBlockName;
             CUTExternalLineName(1:height(C)) = C.CUTExternalLineName;
+
+            % The CUT direct Inport/Outport block name is the primary
+            % comparison signal name. If it is empty, fall back to the
+            % external line name around the CUT.
+            CompareSignalName(1:height(C)) = C.CUTPortBlockName;
+
+            emptyName = ...
+                strlength(CompareSignalName(1:height(C))) == 0;
+
+            compareIdx = ...
+                find(emptyName);
+
+            if ~isempty(compareIdx)
+                CompareSignalName(compareIdx) = ...
+                    C.CUTExternalLineName(compareIdx);
+            end
         end
 
         for r = 1:rowCount
@@ -189,6 +205,7 @@ for k = 1:numel(selected)
             ProposedCUTPort, ...
             CUTPortBlockName, ...
             CUTExternalLineName, ...
+            CompareSignalName, ...
             PairState, ...
             'VariableNames', { ...
                 'TargetIndex', ...
@@ -203,6 +220,7 @@ for k = 1:numel(selected)
                 'ProposedCUTPort', ...
                 'CUTPortBlockName', ...
                 'CUTExternalLineName', ...
+                'CompareSignalName', ...
                 'PairState'});
 
         detailParts{k} = D;
@@ -218,15 +236,14 @@ for k = 1:numel(selected)
                 height(C));
         end
 
+        fprintf('\n');
+        fprintf('--- Mapping Order Preview ---\n');
+
         disp(D(:, { ...
             'Order', ...
+            'CompareSignalName', ...
             'AssessmentPort', ...
-            'AssessmentSymbol', ...
-            'ProposedCUTSide', ...
-            'ProposedCUTPort', ...
-            'CUTPortBlockName', ...
-            'CUTExternalLineName', ...
-            'PairState'}));
+            'AssessmentSymbol'}));
 
         clear cleanupObj
         st_close_harness_quiet(ownerPath, harnessName);
