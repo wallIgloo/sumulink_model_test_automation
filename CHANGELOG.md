@@ -1,22 +1,24 @@
-# v0.3 변경 사항
+# Changelog
 
-- `cfg.VerifyAllAssessmentInputs` 옵션 추가
-  - `true`: Test Assessment의 모든 Input Data Symbol verify
-  - `false`: CUT 직접 Outport만 verify
-- Assessment 전체 Input 모드에서는 verify 대상 수집을 위해 Top Model compile을 하지 않도록 변경
-- `st_collect_assessment_input_specs.m` 추가
-  - Assessment Input Symbol의 Name / Size / DataType 조회
-  - 숫자 Size를 element width로 변환
-- `st_build_verify_action.m` 추가
-  - scalar / multidimensional verify 생성 로직 공통화
-- model-function compile이 `SimulationStatus='paused'`로 보이는 경우를 고려하도록 `st_force_model_stopped.m` 수정
-  - paused/compiled에서 `term` 우선
-  - 일반 pause일 때만 SimulationCommand stop fallback
-- Test Manager base Inputs 수정
-  - Signal Editor Scenario 기본 선택 OFF
-  - Test Sequence Override Scenario 기본 선택 제거
-  - Scenario는 Table Iteration 1에서만 선택
-- Coverage 설정 수정
-  - Test File 레벨에서 RecordCoverage 활성화 후 Test Case에도 활성화
-- Assessment 결과에 VerifyMode / VerifyTargetCount / VerifyCount 기록
-- MATLAB 문자열 리터럴은 작은따옴표 방식 유지
+## v0.5 - Work-ready path finder baseline
+
+- Added `st_find_target_paths.m`.
+  - Searches `.slx` / `.mdl` files under `cfg.ModelSearchRoot`.
+  - Lets the user select one model for the whole verification batch.
+  - Resolves Excel `CUTName` values to Subsystem paths.
+  - Auto-selects unique matches and prompts on duplicates.
+  - Writes only the `CUTPath` column back to `TestManagement.xlsx`.
+  - Stores selected model information in `runtime_target.mat`.
+- Added `st_require_runtime_target.m` so automation can reopen the selected model by full file path across MATLAB sessions.
+- Added `st_pre_validate_targets.m` for path-only validation before Harness creation.
+- Added/updated `st_run_from_harness.m` to run Pre-Validate before any long Harness compile.
+- Updated existing-Harness workflow to use the runtime-selected model and optional test execution.
+- Added Harness creation entry point `st_create_harnesses.m`.
+- Kept Harness top-level Outport-only verify target selection.
+- Kept recursive Bus leaf verify generation and `VerifyFirstBusElementOnly` option.
+- Kept optional generated-test execution and failed-verify expected-value auto update.
+- Added `WORK_HANDOFF.md` for moving this baseline into ChatGPT Work.
+
+## Earlier baseline
+
+The project incorporates the v0.3/v0.4 changes for Signal Editor, Test Assessment, Test Manager coverage hierarchy, Harness output selection, Bus handling, generated test execution, and expected-value update.

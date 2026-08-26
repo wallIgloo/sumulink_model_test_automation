@@ -29,18 +29,11 @@ function R = st_update_expected_from_results(resultObj)
 %
 % 지원하지 않는 값은 해당 verify line을 변경하지 않고 결과 Message에 기록합니다.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 
 T = ...
     st_load_targets( ...
         cfg.OnlyEnabled);
-
-
-if ~bdIsLoaded(cfg.TopModel)
-
-    load_system( ...
-        cfg.TopModel);
-end
 
 
 st_force_model_stopped( ...

@@ -6,10 +6,61 @@ rootDir = fileparts(mfilename('fullpath'));
 
 
 %% ============================================================
-% Model
+% Runtime target model
 %% ============================================================
 
-cfg.TopModel = 'TEST_TARGET_MODEL_NAME';
+cfg.RuntimeTargetFile = ...
+    fullfile(rootDir, 'runtime_target.mat');
+
+cfg.TopModel = ...
+    'TEST_TARGET_MODEL_NAME';
+
+cfg.ModelFile = '';
+cfg.HasRuntimeTarget = false;
+
+if isfile(cfg.RuntimeTargetFile)
+
+    S = load(cfg.RuntimeTargetFile);
+
+    if isfield(S, 'TopModel') && ...
+            isfield(S, 'ModelFile')
+
+        topModel = ...
+            strtrim(char(string(S.TopModel)));
+
+        modelFile = ...
+            strtrim(char(string(S.ModelFile)));
+
+        if ~isempty(topModel) && ...
+                ~isempty(modelFile)
+
+            cfg.TopModel = topModel;
+            cfg.ModelFile = modelFile;
+            cfg.HasRuntimeTarget = true;
+        end
+    end
+end
+
+
+%% ============================================================
+% Target model / CUT path finder
+%% ============================================================
+
+% Default assumes this automation folder is placed one level below
+% the folder that contains the target Simulink model(s).
+% Change this when the model files live elsewhere.
+cfg.ModelSearchRoot = ...
+    fileparts(rootDir);
+
+% true  : search subfolders recursively
+% false : search only ModelSearchRoot
+cfg.ModelSearchRecursive = true;
+
+% Folder names ignored while searching for .slx / .mdl files.
+cfg.ModelSearchExcludeFolders = { ...
+    '.git', ...
+    'slprj', ...
+    'result'};
 
 
 %% ============================================================
@@ -37,52 +88,49 @@ cfg.SignalEditorSampleTime = '0.01';
 
 
 %% ============================================================
-% Assessment - Verify 대상
+% Assessment - Verify target
 %% ============================================================
 
 % true:
-%   Harness 최상위 Outport에 연결된 신호 중
-%   Test Assessment Input Symbol로 존재하는 신호만 verify
+%   Verify only Test Assessment Input symbols that correspond to
+%   top-level Harness Outport signals.
 %
 % false:
-%   Test Assessment의 모든 Input Data Symbol을 verify
+%   Verify every Input Data Symbol registered in Test Assessment.
 cfg.VerifyHarnessOutportsOnly = true;
 
 
 %% ============================================================
-% Assessment - Bus 배열 처리
+% Assessment - Bus array handling
 %% ============================================================
 
 % true:
-%   동일 Bus 구조가 배열로 반복될 때 첫 번째 Bus 요소만 verify
+%   When the same Bus structure is repeated as an array, verify only
+%   the first Bus instance.
 %
-% 예:
+% Example:
 %   a(1,1).aa
 %   a(1,1).ab
 %
 % false:
-%   Bus 배열의 모든 요소를 verify
+%   Verify every Bus array element.
 %
-% 일반 numeric 배열에는 영향을 주지 않습니다.
+% Numeric arrays inside a Bus leaf are still verified completely.
 cfg.VerifyFirstBusElementOnly = true;
 
 
 %% ============================================================
-% Assessment - Verify 시점
+% Assessment - Verify timing
 %% ============================================================
 
 % false:
-%   기존 방식 유지
 %   step1 -> step2 transition = true
 %
 % true:
-%   ExpectedValueSampleTime 이후 step2로 이동
 %   step1 -> step2 transition = after(ExpectedValueSampleTime, sec)
 %
-% 주의:
-%   true로 사용할 경우 HarnessStopTime은
-%   ExpectedValueSampleTime보다 크게 두는 것을 권장합니다.
-%   예: SampleTime=0.01이면 StopTime=0.02
+% When true, HarnessStopTime should normally be greater than
+% ExpectedValueSampleTime.
 cfg.VerifyAtSampleTimeOnly = false;
 
 
@@ -100,38 +148,30 @@ cfg.OverwriteTestFile = false;
 
 
 %% ============================================================
-% Test Execution
+% Test execution
 %% ============================================================
 
-% true:
-%   Test Manager 생성 후 Enabled Test Case 전체 실행
-%
-% false:
-%   Test Manager 생성까지만 수행
+% true  : Run all generated Enabled Test Cases after Test Manager creation.
+% false : Stop after Test Manager creation.
 cfg.RunGeneratedTests = false;
 
 
 %% ============================================================
-% Expected Value Auto Update
+% Expected value auto update
 %% ============================================================
 
 % true:
-%   Test 실행 후 실패한 Iteration에서
-%   ExpectedValueSampleTime 시점의 실제 Harness Outport 값을 읽고
-%   verify(... == RHS)의 RHS가 실제값과 다를 때 자동 갱신
+%   After a failed test, read the actual Harness Outport value at
+%   ExpectedValueSampleTime and update the RHS of verify(... == RHS).
 %
 % false:
-%   Expected value 자동 갱신 안 함
-%
-% 안전을 위해 기본값은 false를 권장합니다.
+%   Do not modify expected values automatically.
 cfg.AutoUpdateExpectedOnFail = false;
 
-
-% Expected value를 가져올 simulation time [sec]
+% Simulation time used as the expected-value sample point [sec].
 cfg.ExpectedValueSampleTime = 0.01;
 
-
-% Expected value가 갱신된 뒤 Test File 전체를 한 번 더 실행
+% Run the Test File again after at least one expected value is updated.
 cfg.RerunAfterExpectedUpdate = true;
 
 
@@ -139,6 +179,9 @@ cfg.RerunAfterExpectedUpdate = true;
 % Execution
 %% ============================================================
 
+% If Enabled exists in TestManagement.xlsx:
+% true  -> process Enabled rows only
+% false -> process all rows
 cfg.OnlyEnabled = true;
 
 

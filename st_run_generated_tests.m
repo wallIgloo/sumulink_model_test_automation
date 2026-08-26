@@ -15,7 +15,7 @@ function [resultObj, updateResult] = st_run_generated_tests()
 % 첫 번째 출력 resultObj는 최종 실행 결과입니다.
 % 재실행하지 않으면 최초 실행 결과를 반환합니다.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 
 updateResult = table();
 
@@ -162,13 +162,6 @@ function st_prepare_expected_value_logging( ...
 T = ...
     st_load_targets( ...
         cfg.OnlyEnabled);
-
-
-if ~bdIsLoaded(cfg.TopModel)
-
-    load_system( ...
-        cfg.TopModel);
-end
 
 
 st_force_model_stopped( ...

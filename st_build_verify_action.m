@@ -3,90 +3,44 @@ function [verifyAction, verifyCount] = ...
         targets, ...
         modelName, ...
         verifyFirstBusElementOnly)
-%ST_BUILD_VERIFY_ACTION
-% Test Assessment step2에 들어갈 verify 문을 생성합니다.
+%ST_BUILD_VERIFY_ACTION Build verify statements for Assessment step2.
 %
-%
-% 일반 Scalar:
-%
+% Scalar:
 %   verify(A == 0);
 %
-%
-% 일반 Array:
-%
+% Numeric array:
 %   verify(A(1) == 0);
 %   verify(A(2) == 0);
-%   ...
-%
 %
 % Bus:
-%
 %   verify(data(1,1).NAME == 0);
-%   verify(data(1,1).VALUE == 0);
 %
-%
-% Bus Array:
-%
-% verifyFirstBusElementOnly == false
-%
-%   verify(a(1,1).aa == 0);
-%   verify(a(1,1).ab == 0);
-%
-%   verify(a(1,2).aa == 0);
-%   verify(a(1,2).ab == 0);
-%
-%
-% verifyFirstBusElementOnly == true
-%
-%   verify(a(1,1).aa == 0);
-%   verify(a(1,1).ab == 0);
-%
-%
-% 일반 numeric array에는
-% verifyFirstBusElementOnly 옵션이 영향을 주지 않습니다.
-
-
-%% ============================================================
-% Default Arguments
-%% ============================================================
+% verifyFirstBusElementOnly == true:
+%   repeated Bus array instances are reduced to the first instance only.
+%   Numeric arrays inside Bus leaf elements are still fully verified.
 
 if nargin < 2
-
     modelName = '';
 end
 
-
 if nargin < 3
-
     verifyFirstBusElementOnly = false;
 end
 
+modelName = char(modelName);
 
-modelName = ...
-    char(modelName);
-
-
-%% ============================================================
-% 대상 없음
-%% ============================================================
 
 if isempty(targets)
 
     verifyAction = '';
     verifyCount = 0;
-
     return;
 end
 
 
-%% ============================================================
-% 필수 컬럼 확인
-%% ============================================================
-
 requiredColumns = { ...
     'Name', ...
     'Width'};
-
 
 for k = 1:numel(requiredColumns)
 
@@ -95,45 +49,30 @@ for k = 1:numel(requiredColumns)
             targets.Properties.VariableNames)
 
         error( ...
-            'Verify target table에 필요한 컬럼이 없습니다: %s', ...
+            'Verify target table is missing column: %s', ...
             requiredColumns{k});
     end
 end
 
-
-%% ============================================================
-% Verify Statement 생성
-%% ============================================================
 
 lines = {};
 
 
 for i = 1:height(targets)
 
-    %% --------------------------------------------------------
-    % Symbol Name
-    %% --------------------------------------------------------
-
     symbolName = ...
         char(targets.Name(i));
-
 
     if ~isvarname(symbolName)
 
         error( ...
-            ['Assessment Symbol이 MATLAB 변수명으로 ' ...
-             '사용할 수 없는 형태입니다: %s'], ...
+            'Assessment symbol is not a valid MATLAB identifier: %s', ...
             symbolName);
     end
 
 
-    %% --------------------------------------------------------
-    % Width
-    %% --------------------------------------------------------
-
     width = ...
         double(targets.Width(i));
-
 
     if isempty(width) || ...
             ~isfinite(width) || ...
@@ -141,15 +80,11 @@ for i = 1:height(targets)
             mod(width,1) ~= 0
 
         error( ...
-            '잘못된 Width입니다. Symbol=%s, Width=%g', ...
+            'Invalid verify width for symbol %s: %g', ...
             symbolName, ...
             width);
     end
 
-
-    %% --------------------------------------------------------
-    % Dimensions
-    %% --------------------------------------------------------
 
     dims = ...
         get_target_dimensions( ...
@@ -157,33 +92,20 @@ for i = 1:height(targets)
             i, ...
             width);
 
-
-    %% --------------------------------------------------------
-    % Data Type
-    %% --------------------------------------------------------
-
     dataType = ...
         get_target_datatype( ...
             targets, ...
             i);
 
-
-    %% --------------------------------------------------------
-    % Bus 여부 확인
-    %% --------------------------------------------------------
-
     busName = ...
-        parse_bus_name( ...
-            dataType);
+        parse_bus_name(dataType);
 
 
     %% ========================================================
-    % 일반 Data
+    % Non-Bus
     %% ========================================================
 
     if isempty(busName)
-
-        %% Scalar
 
         if width == 1
 
@@ -191,9 +113,6 @@ for i = 1:height(targets)
                 sprintf( ...
                     'verify(%s == 0);', ...
                     symbolName); %#ok<AGROW>
-
-
-        %% Array
 
         else
 
@@ -207,24 +126,20 @@ for i = 1:height(targets)
             end
         end
 
-
         continue;
     end
 
 
     %% ========================================================
-    % Bus Data
+    % Bus
     %% ========================================================
 
     if isempty(modelName)
 
         error( ...
-            'Bus Type %s를 확인하려면 Top Model 이름이 필요합니다.', ...
+            'Top model name is required to resolve Bus type %s.', ...
             busName);
     end
-
-
-    %% Bus Object 조회
 
     busObj = ...
         resolve_bus_object( ...
@@ -232,18 +147,7 @@ for i = 1:height(targets)
             busName);
 
 
-    %% --------------------------------------------------------
-    % Bus Array Expression 생성
-    %% --------------------------------------------------------
-
     if verifyFirstBusElementOnly
-
-        %% Bus 배열이라도 첫 번째 Bus 인스턴스만 사용
-        %
-        % [1 1]   -> a(1,1)
-        % [1 4]   -> a(1,1)
-        % [3 4]   -> a(1,1)
-        % [2 3 4] -> a(1,1,1)
 
         busExpressions = { ...
             build_first_bus_expression( ...
@@ -252,8 +156,6 @@ for i = 1:height(targets)
 
     else
 
-        %% 모든 Bus 인스턴스 사용
-
         busExpressions = ...
             build_indexed_expressions( ...
                 symbolName, ...
@@ -261,10 +163,6 @@ for i = 1:height(targets)
                 true);
     end
 
-
-    %% --------------------------------------------------------
-    % Bus Leaf 확장
-    %% --------------------------------------------------------
 
     for b = 1:numel(busExpressions)
 
@@ -275,7 +173,6 @@ for i = 1:height(targets)
                 modelName, ...
                 verifyFirstBusElementOnly);
 
-
         lines = [ ...
             lines; ...
             busLines(:)]; %#ok<AGROW>
@@ -283,13 +180,8 @@ for i = 1:height(targets)
 end
 
 
-%% ============================================================
-% 최종 Action
-%% ============================================================
-
 verifyCount = ...
     numel(lines);
-
 
 if verifyCount == 0
 
@@ -307,7 +199,7 @@ end
 
 
 %% ============================================================
-% Target Dimensions
+% Target dimensions
 %% ============================================================
 
 function dims = ...
@@ -316,14 +208,12 @@ function dims = ...
         row, ...
         width)
 
-
 if ismember( ...
         'Dimensions', ...
         targets.Properties.VariableNames)
 
     value = ...
         targets.Dimensions{row};
-
 
     if isnumeric(value) && ...
             ~isempty(value)
@@ -335,15 +225,9 @@ if ismember( ...
     end
 end
 
-
-%% 이전 형식 fallback
-
 if width == 1
-
     dims = [1 1];
-
 else
-
     dims = [1 width];
 end
 
@@ -358,7 +242,6 @@ function dataType = ...
     get_target_datatype( ...
         targets, ...
         row)
-
 
 if ismember( ...
         'DataType', ...
@@ -376,32 +259,20 @@ end
 
 
 %% ============================================================
-% Bus 이름 추출
+% Bus type name
 %% ============================================================
 
-function busName = ...
-    parse_bus_name( ...
-        dataType)
-
+function busName = parse_bus_name(dataType)
 
 dataType = ...
-    strtrim( ...
-        char(dataType));
-
+    strtrim(char(dataType));
 
 busName = '';
 
-
 if isempty(dataType)
-
     return;
 end
 
-
-%% 예:
-%
-% Bus: SOME_BUS
-% Bus: <SOME_BUS>
 
 token = ...
     regexp( ...
@@ -410,18 +281,12 @@ token = ...
         'tokens', ...
         'once');
 
-
 if isempty(token)
-
     return;
 end
 
-
 busName = ...
     strtrim(token{1});
-
-
-%% <NAME> 형식 처리
 
 if length(busName) >= 2 && ...
         busName(1) == '<' && ...
@@ -435,14 +300,13 @@ end
 
 
 %% ============================================================
-% Bus Object 조회
+% Bus object
 %% ============================================================
 
 function busObj = ...
     resolve_bus_object( ...
         modelName, ...
         busName)
-
 
 try
 
@@ -454,16 +318,15 @@ try
 catch ME
 
     error( ...
-        'Bus Object %s를 찾을 수 없습니다: %s', ...
+        'Could not resolve Bus object %s: %s', ...
         busName, ...
         ME.message);
 end
 
-
 if ~isa(busObj, 'Simulink.Bus')
 
     error( ...
-        '조회된 값이 Simulink.Bus가 아닙니다: %s', ...
+        'Resolved value is not a Simulink.Bus object: %s', ...
         busName);
 end
 
@@ -471,7 +334,7 @@ end
 
 
 %% ============================================================
-% Bus Leaf 재귀 탐색
+% Bus leaf expansion
 %% ============================================================
 
 function lines = ...
@@ -481,9 +344,7 @@ function lines = ...
         modelName, ...
         verifyFirstBusElementOnly)
 
-
 lines = {};
-
 
 elements = ...
     busObj.Elements;
@@ -494,30 +355,22 @@ for i = 1:numel(elements)
     elem = ...
         elements(i);
 
-
     fieldName = ...
         char(elem.Name);
 
-
-    fieldExpr = [ ...
-        parentExpr ...
-        '.' ...
-        fieldName];
-
+    fieldExpr = ...
+        [parentExpr '.' fieldName];
 
     fieldDims = ...
         normalize_bus_dimensions( ...
             elem.Dimensions);
-
 
     nestedBusName = ...
         parse_bus_name( ...
             elem.DataType);
 
 
-    %% ========================================================
-    % Nested Bus
-    %% ========================================================
+    %% Nested Bus
 
     if ~isempty(nestedBusName)
 
@@ -526,16 +379,9 @@ for i = 1:numel(elements)
                 modelName, ...
                 nestedBusName);
 
-
-        %% Nested Bus Scalar
-
         if prod(fieldDims) == 1
 
-            nestedExprs = { ...
-                fieldExpr};
-
-
-        %% Nested Bus Array - first element only
+            nestedExprs = {fieldExpr};
 
         elseif verifyFirstBusElementOnly
 
@@ -543,9 +389,6 @@ for i = 1:numel(elements)
                 build_first_bus_expression( ...
                     fieldExpr, ...
                     fieldDims)};
-
-
-        %% Nested Bus Array - all elements
 
         else
 
@@ -557,8 +400,6 @@ for i = 1:numel(elements)
         end
 
 
-        %% 재귀
-
         for n = 1:numel(nestedExprs)
 
             nestedLines = ...
@@ -568,26 +409,19 @@ for i = 1:numel(elements)
                     modelName, ...
                     verifyFirstBusElementOnly);
 
-
             lines = [ ...
                 lines; ...
                 nestedLines(:)]; %#ok<AGROW>
         end
 
-
         continue;
     end
 
 
-    %% ========================================================
-    % 일반 Bus Leaf
-    %% ========================================================
+    %% Normal leaf
 
     leafWidth = ...
         prod(fieldDims);
-
-
-    %% Scalar Leaf
 
     if leafWidth == 1
 
@@ -595,17 +429,6 @@ for i = 1:numel(elements)
             sprintf( ...
                 'verify(%s == 0);', ...
                 fieldExpr); %#ok<AGROW>
-
-
-    %% Array Leaf
-    %
-    % 중요:
-    %
-    % VerifyFirstBusElementOnly은
-    % Bus 인스턴스 배열 반복만 줄입니다.
-    %
-    % Bus 내부 numeric array는 전부 verify합니다.
-    %% ========================================================
 
     else
 
@@ -624,31 +447,24 @@ end
 
 
 %% ============================================================
-% Bus Element Dimensions 정규화
+% Bus element dimensions
 %% ============================================================
 
-function dims = ...
-    normalize_bus_dimensions( ...
-        value)
-
+function dims = normalize_bus_dimensions(value)
 
 if isempty(value)
 
     dims = [1 1];
-
 
 elseif isnumeric(value)
 
     dims = ...
         double(value(:).');
 
-
 else
 
     s = ...
-        strtrim( ...
-            char(string(value)));
-
+        strtrim(char(string(value)));
 
     clean = ...
         regexprep( ...
@@ -656,29 +472,20 @@ else
             '[\[\],;]', ...
             ' ');
 
-
     dims = ...
-        double( ...
-            sscanf( ...
-                clean, ...
-                '%d').');
+        double(sscanf(clean, '%d').');
 end
-
 
 if isempty(dims)
-
     dims = [1 1];
 end
-
 
 if any(~isfinite(dims)) || ...
         any(dims < 1) || ...
         any(mod(dims,1) ~= 0)
 
-    error( ...
-        '지원하지 않는 Bus Element Dimensions입니다.');
+    error('Unsupported Bus element dimensions.');
 end
-
 
 if numel(dims) == 1 && ...
         dims(1) == 1
@@ -690,30 +497,25 @@ end
 
 
 %% ============================================================
-% Bus 배열 첫 요소 Expression 생성
+% First Bus array instance
 %% ============================================================
 
 function expr = ...
     build_first_bus_expression( ...
         baseName, ...
         dims)
-%BUILD_FIRST_BUS_EXPRESSION
-%
+
 % [1 1]   -> a(1,1)
 % [1 3]   -> a(1,1)
 % [2 4]   -> a(1,1)
 % [2 3 4] -> a(1,1,1)
 
-
 dims = ...
     double(dims(:).');
 
-
 if isempty(dims)
-
     dims = [1 1];
 end
-
 
 indices = ...
     repmat( ...
@@ -721,20 +523,17 @@ indices = ...
         1, ...
         numel(dims));
 
-
 expr = ...
     sprintf( ...
         '%s(%s)', ...
         baseName, ...
-        strjoin( ...
-            indices, ...
-            ','));
+        strjoin(indices, ','));
 
 end
 
 
 %% ============================================================
-% 모든 Array Index Expression 생성
+% All array instances
 %% ============================================================
 
 function expressions = ...
@@ -743,84 +542,57 @@ function expressions = ...
         dims, ...
         forceIndex)
 
-
 if nargin < 3
-
     forceIndex = false;
 end
-
 
 dims = ...
     double(dims(:).');
 
-
 if isempty(dims)
-
     dims = [1 1];
 end
-
 
 width = ...
     prod(dims);
 
-
-%% Scalar이면서 index 강제하지 않음
-
 if width == 1 && ...
         ~forceIndex
 
-    expressions = { ...
-        baseName};
-
+    expressions = {baseName};
     return;
 end
 
-
 expressions = ...
-    cell( ...
-        width, ...
-        1);
-
+    cell(width,1);
 
 numDims = ...
     numel(dims);
 
-
 for linearIndex = 1:width
 
     subs = ...
-        cell( ...
-            1, ...
-            numDims);
-
+        cell(1, numDims);
 
     [subs{:}] = ...
         ind2sub( ...
             dims, ...
             linearIndex);
 
-
     subText = ...
-        cell( ...
-            1, ...
-            numDims);
-
+        cell(1, numDims);
 
     for d = 1:numDims
 
         subText{d} = ...
-            num2str( ...
-                subs{d});
+            num2str(subs{d});
     end
-
 
     expressions{linearIndex} = ...
         sprintf( ...
             '%s(%s)', ...
             baseName, ...
-            strjoin( ...
-                subText, ...
-                ','));
+            strjoin(subText, ','));
 end
 
 end

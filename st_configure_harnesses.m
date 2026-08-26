@@ -1,9 +1,8 @@
 function R = st_configure_harnesses()
 %ST_CONFIGURE_HARNESSES Set StopTime on existing harnesses.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 T = st_load_targets(cfg.OnlyEnabled);
-load_system(cfg.TopModel);
 st_force_model_stopped(cfg.TopModel);
 
 n = height(T);

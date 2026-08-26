@@ -3,9 +3,8 @@ function R = st_configure_signal_editors()
 % - Direct CUT Inport exists: SampleTime=0.01 and first scenario rename.
 % - Input values/waveforms are not changed.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 T = st_load_targets(cfg.OnlyEnabled);
-load_system(cfg.TopModel);
 st_force_model_stopped(cfg.TopModel);
 
 n = height(T);

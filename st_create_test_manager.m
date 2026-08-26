@@ -18,9 +18,8 @@ function R = st_create_test_manager()
 % Coverage:
 %   RecordCoverage = true at Test File level and Test Case level.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 T = st_load_targets(cfg.OnlyEnabled);
-load_system(cfg.TopModel);
 st_force_model_stopped(cfg.TopModel);
 
 if isfile(cfg.TestFile) && ~cfg.OverwriteTestFile

@@ -1,2 +1,1 @@
-SimulinkTestAutomation v0.3
-2026-08-25
+v0.5 - Work-ready path finder baseline

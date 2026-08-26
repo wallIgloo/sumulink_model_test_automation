@@ -24,75 +24,45 @@ outportBlocks = find_system(harnessName, ...
     'BlockType', 'Outport');
 
 n = numel(outportBlocks);
-
 Port = zeros(n,1);
 SignalName = strings(n,1);
 OutportBlock = strings(n,1);
 
 for i = 1:n
-
     blockPath = outportBlocks{i};
 
-    Port(i) = str2double( ...
-        get_param(blockPath, 'Port'));
+    Port(i) = str2double(get_param(blockPath, 'Port'));
+    OutportBlock(i) = string(get_param(blockPath, 'Name'));
 
-    OutportBlock(i) = string( ...
-        get_param(blockPath, 'Name'));
-
-    portHandles = get_param( ...
-        blockPath, ...
-        'PortHandles');
-
-    if isempty(portHandles.Inport) || ...
-            portHandles.Inport == -1
-
-        error( ...
-            'Harness Outport has no input port handle: %s', ...
-            blockPath);
+    portHandles = get_param(blockPath, 'PortHandles');
+    if isempty(portHandles.Inport) || portHandles.Inport == -1
+        error('Harness Outport has no input port handle: %s', blockPath);
     end
 
-    lineHandle = get_param( ...
-        portHandles.Inport, ...
-        'Line');
+    lineHandle = get_param(portHandles.Inport, 'Line');
 
     if lineHandle == -1
-
-        % 연결되지 않은 Outport는 verify 대상에서 제외됩니다.
+        % Unconnected Outport. Keep the block name for diagnostics, but
+        % leave SignalName empty so it will not become a verify target.
         SignalName(i) = '';
-
         continue;
     end
 
-    lineName = get_param( ...
-        lineHandle, ...
-        'Name');
+    lineName = get_param(lineHandle, 'Name');
 
     if isempty(lineName)
-
-        % 자동 생성된 Harness에서는 line name이 비어 있어도
-        % Outport block name이 실제 signal name과 같은 경우가 많습니다.
-        lineName = get_param( ...
-            blockPath, ...
-            'Name');
+        % Generated harnesses often use an Outport block name identical to
+        % the propagated signal name even when the line itself is unlabeled.
+        lineName = get_param(blockPath, 'Name');
     end
 
     SignalName(i) = string(lineName);
 end
 
-
-%% Port 순으로 정렬
-
+% Sort by Harness Outport number.
 [Port, idx] = sort(Port);
-
 SignalName = SignalName(idx);
 OutportBlock = OutportBlock(idx);
 
-
-%% 결과
-
-outputs = table( ...
-    Port, ...
-    SignalName, ...
-    OutportBlock);
-
+outputs = table(Port, SignalName, OutportBlock);
 end

@@ -2,9 +2,8 @@ function R = st_validate_targets()
 %ST_VALIDATE_TARGETS Validate CUT paths and existing harness mappings.
 % No compilation is performed.
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 T = st_load_targets(cfg.OnlyEnabled);
-load_system(cfg.TopModel);
 st_force_model_stopped(cfg.TopModel);
 
 n = height(T);

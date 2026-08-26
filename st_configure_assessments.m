@@ -35,21 +35,10 @@ function R = st_configure_assessments()
 %   초기 생성값은 0
 %   AutoUpdateExpectedOnFail 옵션은 Test 실행 후 별도 처리
 
-cfg = st_config();
+cfg = st_require_runtime_target();
 
 T = st_load_targets( ...
     cfg.OnlyEnabled);
-
-
-%% ============================================================
-% Top Model Load
-%% ============================================================
-
-if ~bdIsLoaded(cfg.TopModel)
-
-    load_system( ...
-        cfg.TopModel);
-end
 
 
 st_force_model_stopped( ...
