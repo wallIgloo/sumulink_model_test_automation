@@ -1,16 +1,24 @@
 function R = st_find_target_paths()
-%ST_FIND_TARGET_PATHS Select one Simulink model and resolve CUT paths.
+%ST_FIND_TARGET_PATHS Select one model and resolve CUT paths with anchors.
 %
 % Workflow:
 %   1. Search ModelSearchRoot for .slx / .mdl files.
 %   2. Let the user select exactly one target model.
 %   3. Load the selected model.
-%   4. Search the selected model for each CUTName in TestManagement.xlsx.
-%   5. One match     -> select automatically.
-%      Multiple      -> let the user select the correct CUT path.
-%      No match      -> mark FAIL.
-%   6. Write resolved paths to the existing CUTPath column.
-%   7. Save the selected model to runtime_target.mat.
+%   4. Search the selected model for every CUTName in TestManagement.xlsx.
+%   5. Resolve easy anchors first:
+%        - existing valid CUTPath
+%        - CUTName with exactly one matching subsystem
+%   6. For duplicated CUTName values, rank candidate paths using already
+%      resolved paths as anchors.
+%   7. A selected ambiguous path immediately becomes a new anchor, so the
+%      following CUT recommendations become progressively more specific.
+%   8. Write resolved paths to the existing CUTPath column.
+%   9. Save the selected model to runtime_target.mat.
+%
+% Important:
+%   Excel row order is only a hint. The algorithm never assumes that the
+%   previous row is the parent subsystem.
 %
 % Excel does not need a ModelName column. One selected model is shared by
 % every CUT in the current automation run.
@@ -199,23 +207,23 @@ end
 
 
 %% ============================================================
-% Result buffers
+% Collect enabled target rows and candidate paths
 %% ============================================================
 
-ExcelRow = zeros(0,1);
-CUTName = strings(0,1);
-MatchCount = zeros(0,1);
-SelectedCUTPath = strings(0,1);
-Status = strings(0,1);
-Message = strings(0,1);
-Timestamp = strings(0,1);
-
-
-%% ============================================================
-% Resolve CUT paths
-%% ============================================================
-
-resultIndex = 0;
+items = struct( ...
+    'DataRow', {}, ...
+    'ExcelRow', {}, ...
+    'CUTName', {}, ...
+    'CurrentPath', {}, ...
+    'Candidates', {}, ...
+    'MatchCount', {}, ...
+    'SelectedPath', {}, ...
+    'Status', {}, ...
+    'Resolution', {}, ...
+    'Message', {}, ...
+    'RecommendationScore', {}, ...
+    'BestAnchor', {}, ...
+    'BestRelation', {});
 
 for dataRow = 1:rowCount
 
@@ -241,24 +249,10 @@ for dataRow = 1:rowCount
         end
     end
 
-    resultIndex = ...
-        resultIndex + 1;
-
-    ExcelRow(resultIndex,1) = ...
-        excelRow;
-
-    CUTName(resultIndex,1) = ...
-        string(cutName);
-
-    Timestamp(resultIndex,1) = ...
-        string(datetime( ...
-            'now', ...
-            'Format', 'yyyy-MM-dd HH:mm:ss'));
-
-
-    %% --------------------------------------------------------
-    % Exact subsystem name match
-    %% --------------------------------------------------------
+    currentPath = ...
+        strtrim( ...
+            st_cell_text( ...
+                raw{excelRow, idxCUTPath}));
 
     mask = ...
         strcmp( ...
@@ -268,9 +262,31 @@ for dataRow = 1:rowCount
     matches = ...
         subsystems(mask);
 
-    MatchCount(resultIndex,1) = ...
-        numel(matches);
+    item.DataRow = dataRow;
+    item.ExcelRow = excelRow;
+    item.CUTName = cutName;
+    item.CurrentPath = currentPath;
+    item.Candidates = matches;
+    item.MatchCount = numel(matches);
+    item.SelectedPath = '';
+    item.Status = 'PENDING';
+    item.Resolution = '';
+    item.Message = '';
+    item.RecommendationScore = NaN;
+    item.BestAnchor = '';
+    item.BestRelation = '';
 
+    items(end+1) = item; %#ok<AGROW>
+end
+
+
+%% ============================================================
+% First pass: resolve hard anchors before asking any question
+%% ============================================================
+
+for i = 1:numel(items)
+
+    matches = items(i).Candidates;
 
     %% --------------------------------------------------------
     % Not found
@@ -278,140 +294,162 @@ for dataRow = 1:rowCount
 
     if isempty(matches)
 
-        Status(resultIndex,1) = ...
-            'FAIL';
-
-        Message(resultIndex,1) = ...
+        items(i).Status = 'FAIL';
+        items(i).Resolution = 'NOT_FOUND';
+        items(i).Message = ...
             'CUT subsystem not found in selected model';
-
-        fprintf( ...
-            '[%d] FAIL %s : not found\n', ...
-            excelRow, ...
-            cutName);
 
         continue;
     end
 
 
     %% --------------------------------------------------------
-    % Single match
+    % Reuse an existing CUTPath if it still points to a candidate
     %% --------------------------------------------------------
 
-    if numel(matches) == 1
+    currentNormalized = '';
 
-        selectedPath = ...
-            matches{1};
+    if ~isempty(items(i).CurrentPath)
 
+        try
 
-    %% --------------------------------------------------------
-    % Multiple matches
-    %% --------------------------------------------------------
+            currentNormalized = ...
+                st_normalize_cut_path( ...
+                    items(i).CurrentPath, ...
+                    modelName);
 
-    else
+        catch
 
-        currentPath = ...
-            strtrim( ...
-                st_cell_text( ...
-                    raw{excelRow, idxCUTPath}));
-
-        currentNormalized = '';
-
-        if ~isempty(currentPath)
-
-            try
-
-                currentNormalized = ...
-                    st_normalize_cut_path( ...
-                        currentPath, ...
-                        modelName);
-
-            catch
-                currentNormalized = '';
-            end
+            currentNormalized = '';
         end
+    end
 
+    existingIndex = [];
 
-        %% Existing CUTPath is still one of the matches -> reuse it
+    if ~isempty(currentNormalized)
 
-        existingIndex = [];
+        existingIndex = ...
+            find( ...
+                strcmp(matches, currentNormalized), ...
+                1, ...
+                'first');
+    end
 
-        if ~isempty(currentNormalized)
+    if ~isempty(existingIndex)
 
-            existingIndex = ...
-                find( ...
-                    strcmp(matches, currentNormalized), ...
-                    1, ...
-                    'first');
-        end
+        items(i).SelectedPath = matches{existingIndex};
+        items(i).Status = 'OK';
+        items(i).Resolution = 'EXISTING_PATH';
+        items(i).Message = 'Existing valid CUTPath reused';
 
-        if ~isempty(existingIndex)
-
-            selectedPath = ...
-                matches{existingIndex};
-
-        else
-
-            [matchIndex, matchOk] = ...
-                listdlg( ...
-                    'PromptString', { ...
-                        sprintf('CUTName: %s', cutName), ...
-                        'Multiple subsystem paths were found. Select one.'}, ...
-                    'SelectionMode', 'single', ...
-                    'ListString', matches, ...
-                    'ListSize', [720 320], ...
-                    'Name', 'CUT Path Selection');
-
-            if ~matchOk || isempty(matchIndex)
-
-                Status(resultIndex,1) = ...
-                    'FAIL';
-
-                Message(resultIndex,1) = ...
-                    'CUT path selection was cancelled';
-
-                fprintf( ...
-                    '[%d] FAIL %s : selection cancelled\n', ...
-                    excelRow, ...
-                    cutName);
-
-                continue;
-            end
-
-            selectedPath = ...
-                matches{matchIndex};
-        end
+        continue;
     end
 
 
     %% --------------------------------------------------------
-    % Update CUTPath in memory
+    % Unique match becomes an anchor automatically
     %% --------------------------------------------------------
-
-    cutPathColumn{dataRow} = ...
-        selectedPath;
-
-    SelectedCUTPath(resultIndex,1) = ...
-        string(selectedPath);
-
-    Status(resultIndex,1) = ...
-        'OK';
 
     if numel(matches) == 1
 
-        Message(resultIndex,1) = ...
-            'Resolved automatically';
+        items(i).SelectedPath = matches{1};
+        items(i).Status = 'OK';
+        items(i).Resolution = 'UNIQUE_MATCH';
+        items(i).Message = 'Resolved automatically';
+    end
+end
 
-    else
 
-        Message(resultIndex,1) = ...
-            'Resolved from multiple matches';
+%% ============================================================
+% Build initial anchors from existing / unique paths
+%% ============================================================
+
+anchors = st_build_anchor_table(items);
+
+
+%% ============================================================
+% Second pass: resolve ambiguous CUTs in Excel order
+%% ============================================================
+
+for i = 1:numel(items)
+
+    if ~strcmp(items(i).Status, 'PENDING')
+        continue;
     end
 
-    fprintf( ...
-        '[%d] OK   %s -> %s\n', ...
-        excelRow, ...
-        cutName, ...
-        selectedPath);
+    cutName = items(i).CUTName;
+    matches = items(i).Candidates;
+
+    ranking = ...
+        st_score_path_candidates( ...
+            matches, ...
+            items(i).ExcelRow, ...
+            anchors, ...
+            modelName, ...
+            cfg.PathFinderAnchorCount);
+
+    if ~isempty(ranking)
+
+        items(i).RecommendationScore = ranking.Score(1);
+        items(i).BestAnchor = char(ranking.BestAnchor(1));
+        items(i).BestRelation = char(ranking.BestRelation(1));
+    end
+
+    [selectedPath, selectedRankingRow, selectionOk] = ...
+        st_select_ranked_candidate( ...
+            cutName, ...
+            ranking, ...
+            modelName, ...
+            cfg.PathFinderPreviewSelection);
+
+    if ~selectionOk
+
+        items(i).Status = 'FAIL';
+        items(i).Resolution = 'SELECTION_CANCELLED';
+        items(i).Message = 'CUT path selection was cancelled';
+
+        fprintf( ...
+            '[%d] FAIL %s : selection cancelled\n', ...
+            items(i).ExcelRow, ...
+            cutName);
+
+        continue;
+    end
+
+    items(i).SelectedPath = selectedPath;
+    items(i).Status = 'OK';
+    items(i).Resolution = 'ANCHOR_RECOMMENDATION';
+    items(i).RecommendationScore = ...
+        ranking.Score(selectedRankingRow);
+    items(i).BestAnchor = ...
+        char(ranking.BestAnchor(selectedRankingRow));
+    items(i).BestRelation = ...
+        char(ranking.BestRelation(selectedRankingRow));
+    items(i).Message = ...
+        'Resolved from ranked duplicate candidates';
+
+    % The manually confirmed path immediately becomes an anchor for the
+    % next ambiguous CUT.
+    anchors = ...
+        st_append_anchor( ...
+            anchors, ...
+            items(i).ExcelRow, ...
+            items(i).CUTName, ...
+            items(i).SelectedPath);
+end
+
+
+%% ============================================================
+% Update CUTPath column in memory
+%% ============================================================
+
+for i = 1:numel(items)
+
+    if strcmp(items(i).Status, 'OK')
+
+        cutPathColumn{items(i).DataRow} = ...
+            items(i).SelectedPath;
+    end
 end
 
 
@@ -432,8 +470,57 @@ writecell( ...
 
 
 %% ============================================================
-% Result
+% Result table
 %% ============================================================
+
+n = numel(items);
+
+ExcelRow = zeros(n,1);
+CUTName = strings(n,1);
+MatchCount = zeros(n,1);
+SelectedCUTPath = strings(n,1);
+Status = strings(n,1);
+Resolution = strings(n,1);
+RecommendationScore = nan(n,1);
+BestAnchor = strings(n,1);
+BestRelation = strings(n,1);
+Message = strings(n,1);
+Timestamp = strings(n,1);
+
+for i = 1:n
+
+    ExcelRow(i) = items(i).ExcelRow;
+    CUTName(i) = string(items(i).CUTName);
+    MatchCount(i) = items(i).MatchCount;
+    SelectedCUTPath(i) = string(items(i).SelectedPath);
+    Status(i) = string(items(i).Status);
+    Resolution(i) = string(items(i).Resolution);
+    RecommendationScore(i) = items(i).RecommendationScore;
+    BestAnchor(i) = string(items(i).BestAnchor);
+    BestRelation(i) = string(items(i).BestRelation);
+    Message(i) = string(items(i).Message);
+    Timestamp(i) = string(datetime( ...
+        'now', ...
+        'Format', 'yyyy-MM-dd HH:mm:ss'));
+
+    if strcmp(items(i).Status, 'OK')
+
+        fprintf( ...
+            '[%d] OK   %s -> %s [%s]\n', ...
+            items(i).ExcelRow, ...
+            items(i).CUTName, ...
+            items(i).SelectedPath, ...
+            items(i).Resolution);
+
+    elseif strcmp(items(i).Status, 'FAIL')
+
+        fprintf( ...
+            '[%d] FAIL %s : %s\n', ...
+            items(i).ExcelRow, ...
+            items(i).CUTName, ...
+            items(i).Message);
+    end
+end
 
 R = table( ...
     ExcelRow, ...
@@ -441,6 +528,10 @@ R = table( ...
     MatchCount, ...
     SelectedCUTPath, ...
     Status, ...
+    Resolution, ...
+    RecommendationScore, ...
+    BestAnchor, ...
+    BestRelation, ...
     Message, ...
     Timestamp);
 
@@ -459,6 +550,248 @@ fprintf('Total: %d\n', height(R));
 fprintf('============================================\n');
 fprintf('Runtime target saved: %s\n', cfg.RuntimeTargetFile);
 fprintf('============================================\n');
+
+end
+
+
+%% ============================================================
+% Ranked candidate selection
+%% ============================================================
+
+function [selectedPath, selectedRow, ok] = ...
+    st_select_ranked_candidate( ...
+        cutName, ...
+        ranking, ...
+        modelName, ...
+        previewSelection)
+
+selectedPath = '';
+selectedRow = [];
+ok = false;
+
+if isempty(ranking)
+    return;
+end
+
+while true
+
+    displayList = ...
+        st_ranking_display_list( ...
+            ranking);
+
+    prompt = { ...
+        sprintf('CUTName: %s', cutName), ...
+        'Candidates are sorted by recommendation score.', ...
+        'The previous Excel row is only a hint; hierarchy is scored separately.'};
+
+    [index, listOk] = ...
+        listdlg( ...
+            'PromptString', prompt, ...
+            'SelectionMode', 'single', ...
+            'ListString', displayList, ...
+            'ListSize', [900 380], ...
+            'Name', 'Recommended CUT Path Selection');
+
+    if ~listOk || isempty(index)
+        return;
+    end
+
+    candidate = ...
+        char(ranking.CandidatePath(index));
+
+    if previewSelection
+
+        st_preview_candidate(candidate, modelName);
+
+        questionText = ...
+            sprintf( ...
+                'CUTName: %s\nSelected: %s\n\nUse the highlighted subsystem?', ...
+                cutName, ...
+                char(ranking.RelativePath(index)));
+
+        answer = ...
+            questdlg( ...
+                questionText, ...
+                'Confirm CUT Path', ...
+                'Use', ...
+                'Choose Again', ...
+                'Cancel', ...
+                'Use');
+
+        st_clear_highlight(modelName);
+
+        if strcmp(answer, 'Choose Again')
+            continue;
+        end
+
+        if ~strcmp(answer, 'Use')
+            return;
+        end
+    end
+
+    selectedPath = candidate;
+    selectedRow = index;
+    ok = true;
+    return;
+end
+
+end
+
+
+function displayList = st_ranking_display_list(ranking)
+
+n = height(ranking);
+displayList = cell(n,1);
+
+for i = 1:n
+
+    scoreText = sprintf('%7.1f', ranking.Score(i));
+
+    relation = ...
+        st_relation_display_name( ...
+            char(ranking.BestRelation(i)));
+
+    if strlength(ranking.BestAnchor(i)) > 0
+
+        anchorText = sprintf( ...
+            'anchor: %s (%s)', ...
+            char(ranking.BestAnchor(i)), ...
+            relation);
+
+    else
+
+        anchorText = 'anchor: none';
+    end
+
+    displayList{i} = sprintf( ...
+        '[%s]  %-18s | %-18s | %s | %s', ...
+        scoreText, ...
+        char(ranking.Grandparent(i)), ...
+        char(ranking.Parent(i)), ...
+        char(ranking.RelativePath(i)), ...
+        anchorText);
+end
+
+end
+
+
+function text = st_relation_display_name(relation)
+
+switch relation
+
+    case 'DESCENDANT_OF_ANCHOR'
+        text = 'inside anchor';
+
+    case 'ANCESTOR_OF_ANCHOR'
+        text = 'contains anchor';
+
+    case 'SAME_PARENT'
+        text = 'same parent';
+
+    case 'SAME_GRANDPARENT'
+        text = 'same grandparent';
+
+    case 'COMMON_ANCESTOR'
+        text = 'common ancestor';
+
+    case 'MODEL_ONLY'
+        text = 'model only';
+
+    otherwise
+        text = relation;
+end
+
+end
+
+
+function st_preview_candidate(candidatePath, modelName)
+
+try
+
+    parentPath = ...
+        get_param(candidatePath, 'Parent');
+
+    if ~isempty(parentPath)
+        open_system(parentPath);
+    else
+        open_system(modelName);
+    end
+
+    hilite_system( ...
+        candidatePath, ...
+        'find');
+
+catch ME
+
+    warning( ...
+        'Could not preview CUT path %s: %s', ...
+        candidatePath, ...
+        ME.message);
+end
+
+end
+
+
+function st_clear_highlight(modelName)
+
+try
+
+    hilite_system( ...
+        modelName, ...
+        'none');
+
+catch
+end
+
+end
+
+
+%% ============================================================
+% Anchor helpers
+%% ============================================================
+
+function anchors = st_build_anchor_table(items)
+
+ExcelRow = zeros(0,1);
+CUTName = strings(0,1);
+CUTPath = strings(0,1);
+
+for i = 1:numel(items)
+
+    if strcmp(items(i).Status, 'OK') && ...
+            ~isempty(items(i).SelectedPath)
+
+        ExcelRow(end+1,1) = items(i).ExcelRow; %#ok<AGROW>
+        CUTName(end+1,1) = string(items(i).CUTName); %#ok<AGROW>
+        CUTPath(end+1,1) = string(items(i).SelectedPath); %#ok<AGROW>
+    end
+end
+
+anchors = table( ...
+    ExcelRow, ...
+    CUTName, ...
+    CUTPath);
+
+end
+
+
+function anchors = ...
+    st_append_anchor( ...
+        anchors, ...
+        excelRow, ...
+        cutName, ...
+        cutPath)
+
+newRow = table( ...
+    double(excelRow), ...
+    string(cutName), ...
+    string(cutPath), ...
+    'VariableNames', { ...
+        'ExcelRow', ...
+        'CUTName', ...
+        'CUTPath'});
+
+anchors = [anchors; newRow];
 
 end
 

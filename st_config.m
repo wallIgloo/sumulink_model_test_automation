@@ -62,6 +62,17 @@ cfg.ModelSearchExcludeFolders = { ...
     'slprj', ...
     'result'};
 
+% Number of strongest resolved CUT paths used when ranking duplicated CUTs.
+% The best anchor dominates; additional anchors provide supporting evidence.
+cfg.PathFinderAnchorCount = 3;
+
+% true:
+%   After choosing a duplicated CUT candidate, open/highlight it in Simulink
+%   and ask for confirmation before the path is accepted.
+% false:
+%   Accept the selected ranked candidate immediately.
+cfg.PathFinderPreviewSelection = true;
+
 
 %% ============================================================
 % Management Excel

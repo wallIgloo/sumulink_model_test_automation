@@ -1,139 +1,71 @@
-# Simulink Test Automation v0.5
+# Simulink Test Automation v0.6
 
-One selected Simulink model contains all CUT subsystems for the current verification batch. The Excel file does not need a `ModelName` column.
-
-## 1. First-time / changed-model flow
+## Recommended entry flow
 
 ```matlab
 st_setup
 st_find_target_paths
-```
-
-`st_find_target_paths`:
-
-- searches `cfg.ModelSearchRoot` for `.slx` / `.mdl` files,
-- shows a single-model selection dialog,
-- loads the selected model,
-- searches each enabled `CUTName` as an exact Subsystem name,
-- automatically accepts a unique match,
-- asks the user when the same CUT name exists at multiple paths,
-- writes resolved values to the existing Excel `CUTPath` column,
-- saves the selected model to `runtime_target.mat`.
-
-Then run either:
-
-```matlab
 st_run_from_harness
 ```
 
-for Harness creation onward, or:
+Use `st_run_after_harness` when the harnesses already exist.
+
+## CUT path discovery
+
+`st_find_target_paths` searches `.slx` / `.mdl` files, lets you select one target model, then resolves every enabled `CUTName` in `TestManagement.xlsx`.
+
+Excel does not need a model column. One selected model is shared by all CUTs in the current run.
+
+### Duplicate CUT names
+
+When the same CUT name exists in many locations, v0.6 no longer presents an unranked list.
+
+The resolver first establishes anchors from:
+
+1. an existing `CUTPath` that is still valid, and
+2. CUT names that have exactly one matching subsystem.
+
+Ambiguous candidates are then ranked using the resolved anchors. Structural relationships are stronger evidence than Excel row order. The algorithm considers descendant/ancestor relationships, same parent or grandparent, common ancestor depth, tree distance, and Excel row proximity.
+
+This means the row above the current CUT is useful context but is never assumed to be its parent.
+
+After you confirm one ambiguous CUT, that path immediately becomes another anchor, making the next ambiguous CUT easier to rank.
+
+### Candidate display
+
+Candidates are shown in recommendation order with:
+
+- score
+- grandparent
+- parent
+- relative path
+- strongest anchor and relation
+
+With `cfg.PathFinderPreviewSelection = true`, the selected candidate is highlighted in Simulink and must be confirmed before it is written to Excel.
+
+## Path finder configuration
 
 ```matlab
-st_run_after_harness
+cfg.ModelSearchRoot = fileparts(rootDir);
+cfg.ModelSearchRecursive = true;
+cfg.PathFinderAnchorCount = 3;
+cfg.PathFinderPreviewSelection = true;
 ```
 
-when Harnesses already exist.
+`cfg.PathFinderAnchorCount` controls how many of the strongest resolved anchors contribute to each recommendation score. The best anchor has the largest weight.
 
-## 2. Management Excel
+## Management Excel
 
-Required columns:
+Expected columns remain:
 
-| Column | Purpose |
-| --- | --- |
-| `CUTName` | Exact Subsystem block name to search |
-| `CUTPath` | Resolved full Simulink path |
-| `HarnessName` | Harness name |
-| `TestCaseName` | Test Manager Test Case name |
+- `CUTName`
+- `CUTPath`
+- `HarnessName`
+- `TestCaseName`
 
 Optional:
 
 - `No`
 - `Enabled`
 
-`CUTPath` may be blank before `st_find_target_paths` is run.
-
-## 3. Pre-validation
-
-`st_pre_validate_targets` runs before Harness creation and checks only:
-
-- CUTPath is present,
-- the path resolves in the selected model,
-- the block exists,
-- the block is a Subsystem.
-
-It deliberately does not require a Harness, Signal Editor, Assessment, Scenario, or Test Case.
-
-## 4. Harness / Signal Editor / Assessment
-
-Current defaults are controlled by `st_config.m`.
-
-Important verify rules:
-
-- With `cfg.VerifyHarnessOutportsOnly = true`, only signals connected to top-level Harness Outport blocks are considered verify targets.
-- Those names must also exist as Test Assessment Input Data Symbols.
-- Assessment input-side signals that are not Harness outputs are ignored.
-- Numeric arrays are expanded element by element.
-- Bus values are recursively expanded to leaf elements.
-- `cfg.VerifyFirstBusElementOnly = true` keeps only the first repeated Bus instance such as `a(1,1)`, but still verifies every distinct field and every numeric leaf-array element inside that instance.
-
-## 5. Test Manager
-
-The generated Test File is:
-
-```text
-{SelectedModel}.mldatx
-```
-
-The default suite is:
-
-```text
-New Test Suite 1
-```
-
-Each Test Case uses one table iteration named `Iteration 1`. Signal Editor and Test Sequence scenario selection is applied at the iteration level.
-
-Coverage recording is enabled at Test File, Test Suite, and Test Case levels.
-
-## 6. Optional test execution
-
-```matlab
-cfg.RunGeneratedTests = false;
-```
-
-Set to `true` to run generated Enabled Test Cases after Test Manager creation.
-
-Tests can also be run independently:
-
-```matlab
-st_run_generated_tests
-```
-
-## 7. Optional expected-value update
-
-```matlab
-cfg.AutoUpdateExpectedOnFail = false;
-cfg.ExpectedValueSampleTime = 0.01;
-cfg.RerunAfterExpectedUpdate = true;
-cfg.VerifyAtSampleTimeOnly = false;
-```
-
-When enabled, failed verify RHS values can be replaced with the actual logged Harness output value at `ExpectedValueSampleTime` and then rerun.
-
-Use this intentionally: the current model output becomes the new expected value.
-
-## 8. Main entry points
-
-```matlab
-st_find_target_paths
-st_pre_validate_targets
-st_create_harnesses
-st_run_from_harness
-st_run_after_harness
-st_run_generated_tests
-```
-
-## 9. Runtime target
-
-`runtime_target.mat` stores the selected target model name and full file path. Re-run `st_find_target_paths` if the model changes or moves.
-
-See `WORK_HANDOFF.md` for the current project contract and Work migration notes.
+`CUTPath` can be empty before the first path-finder run. Resolved paths are written back into the same column.

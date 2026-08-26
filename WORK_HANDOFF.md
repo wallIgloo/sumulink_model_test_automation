@@ -1,80 +1,45 @@
-# Simulink Test Automation - Work Handoff
+# Work handoff - Simulink Test Automation v0.6
 
-## Current baseline
+## Current project goal
 
-This folder is the Work-ready baseline after adding target-model selection and CUT path discovery.
+Automate Simulink Test setup for many subsystem CUTs contained in one selected model.
 
-The automation assumes one selected Simulink model contains all CUT subsystems for the current verification batch. `TestManagement.xlsx` does not need a `ModelName` column.
+## Target model policy
 
-## Recommended user flow
+- There is no `ModelName` column in Excel.
+- The user selects one model per automation run.
+- The selection is stored in `runtime_target.mat` as `TopModel` / `ModelFile`.
+- Example/documentation model placeholder: `TEST_TARGET_MODEL_NAME`.
+
+## Path resolution policy
+
+`st_find_target_paths` is a discovery step and `st_pre_validate_targets` is a validation step. Keep these responsibilities separate.
+
+For duplicated CUT names:
+
+1. collect all candidate subsystem paths;
+2. resolve existing valid paths and unique matches first;
+3. use those resolved paths as anchors;
+4. rank ambiguous candidates structurally;
+5. Excel row proximity is only a secondary hint and must never imply parenthood;
+6. a user-confirmed path becomes an anchor immediately for later ambiguous CUTs.
+
+The current scoring helper is `st_score_path_candidates.m`.
+
+Strong evidence includes descendant/ancestor relationship, shared parent/grandparent, deep common ancestor, and short tree distance. Both previous and next uniquely resolved rows may act as anchors.
+
+## Existing downstream rules
+
+- Pre-validation checks CUT path existence and Subsystem type before harness creation.
+- Verify targets are Test Assessment Inputs corresponding to top-level Harness Outport signals.
+- `VerifyFirstBusElementOnly` can restrict repeated Bus arrays to the first Bus instance while still verifying all fields / numeric leaf elements in that instance.
+- Optional generated-test execution and expected-value calibration are controlled in `st_config.m`.
+
+## Main entry points
 
 ```matlab
-st_setup
 st_find_target_paths
 st_run_from_harness
-```
-
-If Harnesses already exist:
-
-```matlab
-st_setup
-st_find_target_paths
 st_run_after_harness
+st_run_generated_tests
 ```
-
-`st_find_target_paths` performs the model selection and path resolution before any long Harness compile begins.
-
-## Path finder behavior
-
-1. Search `cfg.ModelSearchRoot` for `.slx` / `.mdl` files.
-2. User selects one target model.
-3. The selected model is loaded by full file path.
-4. Every enabled Excel `CUTName` is searched as an exact Subsystem name inside that model.
-5. One match is accepted automatically.
-6. Multiple matches show a manual selection dialog.
-7. No match is recorded as FAIL.
-8. Resolved paths are written only to the existing `CUTPath` column.
-9. The selected model is stored in `runtime_target.mat`.
-
-## Excel columns
-
-Required:
-
-- `CUTName`
-- `CUTPath`
-- `HarnessName`
-- `TestCaseName`
-
-Optional:
-
-- `No`
-- `Enabled`
-
-No `ModelName` column is required.
-
-## Verification rules
-
-- Verify targets are Harness top-level Outport signals that also exist as Test Assessment Input Data Symbols.
-- CUT input-side Assessment symbols are not verify targets.
-- Scalar numeric data: `verify(A == 0);`
-- Numeric arrays: all elements are verified with linear indexing.
-- Bus values are recursively expanded to leaf elements.
-- `cfg.VerifyFirstBusElementOnly = true` verifies only the first repeated Bus instance, while still verifying all distinct Bus fields and numeric leaf-array elements.
-
-## Test execution / expected value calibration
-
-- `cfg.RunGeneratedTests` controls whether generated Enabled Test Cases run automatically.
-- `cfg.AutoUpdateExpectedOnFail` can update failed verify RHS values using the actual Harness Outport value at `cfg.ExpectedValueSampleTime`.
-- `cfg.RerunAfterExpectedUpdate` controls automatic rerun after an expected-value update.
-- `cfg.VerifyAtSampleTimeOnly` controls whether the Assessment transition waits until the sample time.
-
-## Runtime target
-
-`runtime_target.mat` is generated data and should normally not be treated as a source file. Re-run `st_find_target_paths` when the target model changes or moves.
-
-## Known considerations
-
-- Harness creation still uses normal compile mode and can be slow on large models.
-- Exact CUT-name duplicates require manual path selection.
-- Model references and linked-library internals are not used as CUT search targets by the current path finder (`FollowLinks = off`).
-- Automatically adopting current simulation output as an expected value should be used intentionally because it can turn an incorrect current model behavior into a new expected value.
