@@ -1,5 +1,21 @@
 # Simulink Test Automation v0.9.4
 
+## v0.9.5 - preserve raw `/` names during Assessment matching
+
+Assessment matching does not delete or replace `/` in Harness signal names or Outport block names. Matching is performed in this order:
+
+```text
+1. Exact raw-name match
+2. If names differ, port-order fallback only when Harness Outport count
+   equals Assessment Input symbol count
+3. Otherwise FAIL with both raw Harness names and actual Assessment symbols
+```
+
+The verify action always uses the actual Test Assessment symbol name returned by `sltest.testsequence.findSymbol`. The original Harness name is kept only for mapping/diagnostics.
+
+`AssessmentResult.PortOrderFallbackCount` shows how many outputs required the safe port-order fallback. A value of `0` means every target matched by exact raw name.
+
+
 ## v0.9.4 - Test Manager input-scenario guard
 
 `st_configure_signal_editors` intentionally skips Signal Editor scenario configuration when the CUT has no direct Inport. Test Manager now follows the same rule.

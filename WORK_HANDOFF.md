@@ -59,3 +59,7 @@ cfg.RunGeneratedTests = true;
 cfg.AutoUpdateExpectedOnFail = true;
 cfg.RerunAfterExpectedUpdate = true;
 ```
+
+## Assessment raw-name rule (v0.9.5)
+
+Do not strip `/` or normalize Harness signal/Outport names for Assessment matching. `st_configure_assessments` uses exact raw-name matching first. If generated Assessment symbol names differ, it may use port order only when Harness Outport count equals Assessment Input symbol count. Unsafe or ambiguous cases fail with diagnostics instead of rewriting names. `PortOrderFallbackCount` is written to `AssessmentResult`.

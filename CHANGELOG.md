@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.9.5
+
+- Assessment output matching no longer performs or proposes slash deletion/name normalization.
+- `st_configure_assessments` now matches Harness output names to Assessment Input symbols using exact raw names first.
+- If raw names differ, a port-order fallback is allowed only when Harness Outport count and Assessment Input symbol count are identical.
+- Fallback keeps the original Harness signal/outport names unchanged and uses the actual Assessment symbol name for verify generation.
+- If a safe one-to-one match cannot be established, the automation fails with the unmatched raw Harness names and actual Assessment symbol names instead of guessing.
+- Added `PortOrderFallbackCount` to `AssessmentResult`.
+
 ## v0.9.4
 
 - Fixed Test Manager iteration setup for CUTs with no direct Inport.

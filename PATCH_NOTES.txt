@@ -1,0 +1,11 @@
+Simulink Test Automation v0.9.5 patch
+Base: GitHub main v0.9.4
+
+Purpose:
+- Never delete or normalize '/' while matching Harness outputs to Test Assessment Input symbols.
+- Exact raw-name match first.
+- Port-order fallback only when Harness Outport count equals Assessment Input symbol count.
+- Fail with raw-name diagnostics instead of guessing when safe mapping is not possible.
+- AssessmentResult adds PortOrderFallbackCount.
+
+Replace the included files in the project root.
