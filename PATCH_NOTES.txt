@@ -1,22 +1,29 @@
-Assessment Scenario Offset Matching Patch
+Test Manager incremental update patch
 
-적용 규칙
-- Assessment Input Port는 실제 Port 번호 기준으로 정렬합니다.
-- CUT에 direct Inport가 있으면 Signal Editor ActiveScenario의 element 개수를 K로 계산합니다.
-- Assessment Port 1..K는 Scenario 입력으로 보고 verify 대상에서 제외합니다.
-- Assessment Port K+1부터 Harness output signal 순서대로 대응합니다.
-- 이름 비교는 하지 않습니다.
-- '/', 공백, 특수문자 제거/치환도 하지 않습니다.
-- verify()에는 Assessment가 실제로 생성한 Symbol 이름을 그대로 사용합니다.
+Default:
+    cfg.OverwriteTestFile = false
 
-안전 검사
-- Assessment Port가 1..N 연속인지 확인합니다.
-- Assessment 개수 == Scenario 개수 + usable Harness output 개수인지 확인합니다.
-- 개수가 다르면 추측하지 않고 FAIL 처리합니다.
+OverwriteTestFile = false
+- If the target .mldatx is already open, reuse that TestFile object.
+- If it exists but is not open, open it.
+- If it does not exist, create it.
+- Preserve existing Test Cases in cfg.TestSuiteName.
+- If TestCaseName already exists in that suite, SKIP it unchanged.
+- Create only missing Test Cases.
+- Duplicate TestCaseName rows in the same Excel input are also skipped after
+  the first one is created.
 
-교체 파일
-1. st_configure_assessments.m
-2. st_collect_assessment_input_specs.m
-3. st_collect_signal_editor_scenario_names.m (신규)
+OverwriteTestFile = true
+- Close only the target Test File if it is already open.
+- Recreate the .mldatx file.
+- Rebuild the requested suite's Test Cases from Excel.
 
-실행 전 프로젝트의 기존 파일을 백업한 뒤 위 3개 파일을 프로젝트 루트에 적용하세요.
+Result additions:
+- ExistingTestCase
+- Action = CREATED / SKIP_EXISTING / FAILED
+- Status = OK / SKIP / FAIL
+
+Note:
+cfg.RunGeneratedTests = true may still run existing enabled Test Cases in the
+Test File, depending on the existing execution flow. This patch only changes
+Test Manager creation/update behavior.

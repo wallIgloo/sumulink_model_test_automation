@@ -196,7 +196,19 @@ cfg.TestFile = ...
 cfg.TestSuiteName = ...
     'New Test Suite 1';
 
-cfg.OverwriteTestFile = true;
+% false (default):
+%   Incremental update.
+%   - Preserve the existing .mldatx file and existing Test Cases.
+%   - Reuse the Test File when it is already open.
+%   - Add only Excel TestCaseName values that do not already exist
+%     in cfg.TestSuiteName.
+%
+% true:
+%   Full recreation.
+%   - Close the target Test File if it is already open.
+%   - Overwrite the .mldatx file.
+%   - Recreate Test Cases from Excel.
+cfg.OverwriteTestFile = false;
 
 
 %% ============================================================

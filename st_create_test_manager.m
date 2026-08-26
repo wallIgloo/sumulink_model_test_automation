@@ -1,10 +1,24 @@
 function R = st_create_test_manager()
-%ST_CREATE_TEST_MANAGER Create Test Manager test cases from management Excel.
+%ST_CREATE_TEST_MANAGER Create or extend Test Manager test cases.
 %
 % Test File : {TopModel}.mldatx
-% Suite     : New Test Suite 1
+% Suite     : cfg.TestSuiteName
 % Test Case : Excel TestCaseName
 % SUT       : TopModel + existing Harness
+%
+% cfg.OverwriteTestFile == true
+%   - If the target Test File is already open, close only that Test File.
+%   - Recreate the .mldatx file.
+%   - Remove existing/default Test Cases from the requested suite.
+%   - Create Test Cases from Excel.
+%
+% cfg.OverwriteTestFile == false
+%   - If the target Test File is already open, reuse the open object.
+%   - If the file exists but is not open, open it.
+%   - If the file does not exist, create it.
+%   - Preserve existing Test Cases.
+%   - If the same TestCaseName already exists in the requested suite, SKIP.
+%   - Create only missing Test Cases.
 %
 % Test Case Inputs:
 %   Signal Editor Scenario : OFF at base Test Case level
@@ -23,57 +37,216 @@ function R = st_create_test_manager()
 % Coverage:
 %   RecordCoverage = true at Test File level and Test Case level.
 
-cfg = st_require_runtime_target();
-T = st_load_targets(cfg.OnlyEnabled);
-st_force_model_stopped(cfg.TopModel);
+cfg = ...
+    st_require_runtime_target();
 
-if isfile(cfg.TestFile) && ~cfg.OverwriteTestFile
-    error(['Test File already exists: ' cfg.TestFile sprintf('\n') ...
-        'Set cfg.OverwriteTestFile = true in st_config.m to recreate it.']);
-end
+T = ...
+    st_load_targets( ...
+        cfg.OnlyEnabled);
 
-tf = sltest.testmanager.TestFile(cfg.TestFile, logical(cfg.OverwriteTestFile));
+st_force_model_stopped( ...
+    cfg.TopModel);
+
+
+%% ============================================================
+% Open / create Test File
+%% ============================================================
+
+fileExistedBefore = ...
+    isfile( ...
+        cfg.TestFile);
+
+tf = ...
+    st_open_or_create_test_file( ...
+        cfg.TestFile, ...
+        cfg.OverwriteTestFile);
+
 
 % Coverage must be enabled at the Test File level first.
-covFile = getCoverageSettings(tf);
-covFile.RecordCoverage = true;
+covFile = ...
+    getCoverageSettings( ...
+        tf);
 
-ts = getTestSuiteByName(tf, cfg.TestSuiteName);
+covFile.RecordCoverage = ...
+    true;
+
+
+%% ============================================================
+% Test Suite
+%% ============================================================
+
+ts = ...
+    getTestSuiteByName( ...
+        tf, ...
+        cfg.TestSuiteName);
+
 if isempty(ts)
-    ts = createTestSuite(tf, cfg.TestSuiteName);
+
+    ts = ...
+        createTestSuite( ...
+            tf, ...
+            cfg.TestSuiteName);
 end
+
 
 % Keep coverage enabled throughout the hierarchy.
-covSuite = getCoverageSettings(ts);
-covSuite.RecordCoverage = true;
+covSuite = ...
+    getCoverageSettings( ...
+        ts);
 
-% Keep the requested suite, remove its default/existing test cases.
-existingCases = getTestCases(ts);
-for k = 1:numel(existingCases)
-    remove(existingCases(k));
+covSuite.RecordCoverage = ...
+    true;
+
+
+%% ============================================================
+% Reset suite only for full recreation / first creation
+%% ============================================================
+
+% A newly-created TestFile can contain a default Test Case.
+% Remove it on the first creation so the generated hierarchy is clean.
+%
+% In incremental mode with an already-existing file, preserve all
+% existing Test Cases.
+if cfg.OverwriteTestFile || ...
+        ~fileExistedBefore
+
+    existingCases = ...
+        getTestCases( ...
+            ts);
+
+    for k = 1:numel(existingCases)
+
+        remove( ...
+            existingCases(k));
+    end
 end
 
-n = height(T);
+
+%% ============================================================
+% Result variables
+%% ============================================================
+
+n = ...
+    height(T);
+
 AssessmentBlock = strings(n,1);
 ScenarioName = strings(n,1);
 HasDirectInport = false(n,1);
 SignalEditorScenarioApplied = false(n,1);
+ExistingTestCase = false(n,1);
+Action = strings(n,1);
 Status = strings(n,1);
 Message = strings(n,1);
 Timestamp = strings(n,1);
 
+
+fprintf('\n');
+fprintf('============================================\n');
+fprintf('Create Test Manager\n');
+fprintf('Test File : %s\n', cfg.TestFile);
+fprintf('Overwrite : %d\n', logical(cfg.OverwriteTestFile));
+
+if cfg.OverwriteTestFile
+    fprintf('Mode      : RECREATE\n');
+else
+    fprintf('Mode      : INCREMENTAL\n');
+end
+
+fprintf('============================================\n');
+
+
+%% ============================================================
+% Create / skip Test Cases
+%% ============================================================
+
 for i = 1:n
-    ownerPath = st_normalize_cut_path(T.CUTPath(i), cfg.TopModel);
-    harnessName = char(T.HarnessName(i));
-    testCaseName = char(T.TestCaseName(i));
-    scenarioName = st_scenario_name(T.CUTName(i));
-    ScenarioName(i) = string(scenarioName);
+
+    ownerPath = ...
+        st_normalize_cut_path( ...
+            T.CUTPath(i), ...
+            cfg.TopModel);
+
+    harnessName = ...
+        char( ...
+            T.HarnessName(i));
+
+    testCaseName = ...
+        char( ...
+            T.TestCaseName(i));
+
+    scenarioName = ...
+        st_scenario_name( ...
+            T.CUTName(i));
+
+    ScenarioName(i) = ...
+        string( ...
+            scenarioName);
+
     tc = [];
 
+
     try
+
         if isempty(testCaseName)
-            error('TestCaseName is empty. Row No=%d', T.No(i));
+
+            error( ...
+                'TestCaseName is empty. Row No=%d', ...
+                T.No(i));
         end
+
+
+        %% ====================================================
+        % Existing Test Case
+        %% ====================================================
+
+        existingTc = ...
+            getTestCaseByName( ...
+                ts, ...
+                testCaseName);
+
+        if ~isempty(existingTc)
+
+            ExistingTestCase(i) = ...
+                true;
+
+            Action(i) = ...
+                'SKIP_EXISTING';
+
+            Status(i) = ...
+                'SKIP';
+
+            if cfg.OverwriteTestFile
+
+                Message(i) = ...
+                    ['Same TestCaseName already exists in this run; ' ...
+                     'duplicate Excel row skipped'];
+
+            else
+
+                Message(i) = ...
+                    'Existing Test Case preserved; no changes applied';
+            end
+
+            fprintf( ...
+                '[%d/%d] SKIP %s | already exists\n', ...
+                i, ...
+                n, ...
+                testCaseName);
+
+            Timestamp(i) = ...
+                string( ...
+                    datetime( ...
+                        'now', ...
+                        'Format', ...
+                        'yyyy-MM-dd HH:mm:ss'));
+
+            continue;
+        end
+
+
+        %% ====================================================
+        % Direct CUT Inport
+        %% ====================================================
 
         directInports = ...
             find_system( ...
@@ -88,92 +261,414 @@ for i = 1:n
         HasDirectInport(i) = ...
             hasDirectInport;
 
-        st_force_model_stopped(cfg.TopModel);
-        sltest.harness.load(ownerPath, harnessName);
-        assess = st_find_assessment_block(harnessName);
-        AssessmentBlock(i) = string(assess);
 
-        tc = createTestCase(ts, 'simulation', testCaseName);
+        %% ====================================================
+        % Harness / Test Assessment
+        %% ====================================================
+
+        st_force_model_stopped( ...
+            cfg.TopModel);
+
+        sltest.harness.load( ...
+            ownerPath, ...
+            harnessName);
+
+        assess = ...
+            st_find_assessment_block( ...
+                harnessName);
+
+        AssessmentBlock(i) = ...
+            string( ...
+                assess);
+
+
+        %% ====================================================
+        % Create Test Case
+        %% ====================================================
+
+        tc = ...
+            createTestCase( ...
+                ts, ...
+                'simulation', ...
+                testCaseName);
+
 
         % Base Test Case Inputs intentionally do NOT select either scenario.
         % Scenarios are selected only by Table Iteration below.
-        setProperty(tc, ...
+        setProperty( ...
+            tc, ...
             'Model', cfg.TopModel, ...
             'HarnessOwner', ownerPath, ...
             'HarnessName', harnessName, ...
             'UseSignalEditorScenarios', false, ...
             'TestSequenceBlock', assess);
 
-        iter = sltest.testmanager.TestIteration;
-        iter.Enabled = true;
+
+        %% ====================================================
+        % Iteration
+        %% ====================================================
+
+        iter = ...
+            sltest.testmanager.TestIteration;
+
+        iter.Enabled = ...
+            true;
+
 
         % Keep this condition identical to st_configure_signal_editors:
         % when the CUT has no direct Inport, no Signal Editor scenario is
         % configured there, so the Test Manager iteration must not request
         % a SignalEditorScenario that does not exist.
         if hasDirectInport
-            setTestParam(iter, 'SignalEditorScenario', scenarioName);
-            SignalEditorScenarioApplied(i) = true;
+
+            setTestParam( ...
+                iter, ...
+                'SignalEditorScenario', ...
+                scenarioName);
+
+            SignalEditorScenarioApplied(i) = ...
+                true;
         end
+
 
         % Test Assessment scenario is independent of CUT input existence.
-        setTestParam(iter, 'TestSequenceScenario', scenarioName);
-        addIteration(tc, iter, 'Iteration 1');
+        setTestParam( ...
+            iter, ...
+            'TestSequenceScenario', ...
+            scenarioName);
 
-        % Explicitly keep test-case coverage enabled as well.
-        covCase = getCoverageSettings(tc);
-        covCase.RecordCoverage = true;
+        addIteration( ...
+            tc, ...
+            iter, ...
+            'Iteration 1');
 
-        st_close_harness_quiet(ownerPath, harnessName);
-        Status(i) = 'OK';
+
+        %% ====================================================
+        % Coverage
+        %% ====================================================
+
+        covCase = ...
+            getCoverageSettings( ...
+                tc);
+
+        covCase.RecordCoverage = ...
+            true;
+
+
+        %% ====================================================
+        % Finish
+        %% ====================================================
+
+        st_close_harness_quiet( ...
+            ownerPath, ...
+            harnessName);
+
+        Action(i) = ...
+            'CREATED';
+
+        Status(i) = ...
+            'OK';
+
 
         if hasDirectInport
+
             Message(i) = ...
-                'Test Case + Iteration 1 + Signal Editor + Assessment + Coverage created';
+                ['Test Case + Iteration 1 + Signal Editor + ' ...
+                 'Assessment + Coverage created'];
+
         else
+
             Message(i) = ...
-                'Test Case + Iteration 1 + Assessment + Coverage created; Signal Editor scenario omitted because CUT has no direct Inport';
+                ['Test Case + Iteration 1 + Assessment + Coverage created; ' ...
+                 'Signal Editor scenario omitted because CUT has no direct Inport'];
         end
 
-        fprintf('[%d/%d] OK   %s | DirectInport=%d | SignalEditorScenario=%d\n', ...
+
+        fprintf( ...
+            ['[%d/%d] OK   %s | ' ...
+             'DirectInport=%d | SignalEditorScenario=%d\n'], ...
             i, ...
             n, ...
             testCaseName, ...
             hasDirectInport, ...
             SignalEditorScenarioApplied(i));
 
+
     catch ME
-        st_close_harness_quiet(ownerPath, harnessName);
+
+        st_close_harness_quiet( ...
+            ownerPath, ...
+            harnessName);
+
+
         if ~isempty(tc)
+
             try
-                remove(tc);
+
+                remove( ...
+                    tc);
+
             catch
             end
         end
-        Status(i) = 'FAIL';
-        Message(i) = string(ME.message);
-        fprintf('[%d/%d] FAIL %s: %s\n', i, n, testCaseName, ME.message);
+
+
+        Action(i) = ...
+            'FAILED';
+
+        Status(i) = ...
+            'FAIL';
+
+        Message(i) = ...
+            string( ...
+                ME.message);
+
+
+        fprintf( ...
+            '[%d/%d] FAIL %s: %s\n', ...
+            i, ...
+            n, ...
+            testCaseName, ...
+            ME.message);
     end
 
-    Timestamp(i) = string(datetime('now', 'Format', 'yyyy-MM-dd HH:mm:ss'));
+
+    Timestamp(i) = ...
+        string( ...
+            datetime( ...
+                'now', ...
+                'Format', ...
+                'yyyy-MM-dd HH:mm:ss'));
 end
 
-saveToFile(tf);
 
-R = table(T.No, T.CUTName, T.TestCaseName, T.HarnessName, AssessmentBlock, ...
-    ScenarioName, HasDirectInport, SignalEditorScenarioApplied, ...
-    Status, Message, Timestamp, ...
-    'VariableNames', {'No','CUTName','TestCaseName','HarnessName','AssessmentBlock', ...
-    'ScenarioName','HasDirectInport','SignalEditorScenarioApplied', ...
-    'Status','Message','Timestamp'});
+%% ============================================================
+% Save Test File
+%% ============================================================
 
-st_write_result('TestManagerResult', R);
-fprintf('Test Manager saved: %s\n', cfg.TestFile);
+saveToFile( ...
+    tf);
+
+
+%% ============================================================
+% Result
+%% ============================================================
+
+R = ...
+    table( ...
+        T.No, ...
+        T.CUTName, ...
+        T.TestCaseName, ...
+        T.HarnessName, ...
+        AssessmentBlock, ...
+        ScenarioName, ...
+        HasDirectInport, ...
+        SignalEditorScenarioApplied, ...
+        ExistingTestCase, ...
+        Action, ...
+        Status, ...
+        Message, ...
+        Timestamp, ...
+        'VariableNames', { ...
+            'No', ...
+            'CUTName', ...
+            'TestCaseName', ...
+            'HarnessName', ...
+            'AssessmentBlock', ...
+            'ScenarioName', ...
+            'HasDirectInport', ...
+            'SignalEditorScenarioApplied', ...
+            'ExistingTestCase', ...
+            'Action', ...
+            'Status', ...
+            'Message', ...
+            'Timestamp'});
+
+
+st_write_result( ...
+    'TestManagerResult', ...
+    R);
+
+
+fprintf('\n');
+fprintf('============================================\n');
+fprintf('Test Manager Result\n');
+fprintf('============================================\n');
+fprintf('CREATED : %d\n', ...
+    sum(Action == 'CREATED'));
+fprintf('SKIPPED : %d\n', ...
+    sum(Action == 'SKIP_EXISTING'));
+fprintf('FAILED  : %d\n', ...
+    sum(Action == 'FAILED'));
+fprintf('Total   : %d\n', ...
+    n);
+fprintf('============================================\n');
+fprintf('Test Manager saved: %s\n', ...
+    cfg.TestFile);
+
 end
 
-function st_close_harness_quiet(ownerPath, harnessName)
+
+%% ============================================================
+% Open / create Test File safely
+%% ============================================================
+
+function tf = ...
+    st_open_or_create_test_file( ...
+        testFilePath, ...
+        overwrite)
+
+testFilePath = ...
+    char( ...
+        testFilePath);
+
+overwrite = ...
+    logical( ...
+        overwrite);
+
+targetPath = ...
+    st_canonical_test_file_path( ...
+        testFilePath);
+
+openFiles = ...
+    sltest.testmanager.getTestFiles;
+
+matching = [];
+
+for i = 1:numel(openFiles)
+
+    try
+
+        openPath = ...
+            st_canonical_test_file_path( ...
+                openFiles(i).FilePath);
+
+        if ispc
+            sameFile = strcmpi(openPath, targetPath);
+        else
+            sameFile = strcmp(openPath, targetPath);
+        end
+
+        if sameFile
+
+            matching = ...
+                [matching i]; %#ok<AGROW>
+        end
+
+    catch
+    end
+end
+
+
+%% Overwrite: close only this Test File, then recreate.
+
+if overwrite
+
+    for k = 1:numel(matching)
+
+        obj = ...
+            openFiles( ...
+                matching(k));
+
+        if obj.Dirty
+
+            fprintf( ...
+                ['Closing already-open Test File without saving because ' ...
+                 'OverwriteTestFile=true: %s\n'], ...
+                obj.FilePath);
+
+        else
+
+            fprintf( ...
+                'Closing already-open Test File: %s\n', ...
+                obj.FilePath);
+        end
+
+        close( ...
+            obj);
+    end
+
+
+    tf = ...
+        sltest.testmanager.TestFile( ...
+            testFilePath, ...
+            true);
+
+    return;
+end
+
+
+%% Incremental: reuse already-open Test File.
+
+if ~isempty(matching)
+
+    tf = ...
+        openFiles( ...
+            matching(1));
+
+    fprintf( ...
+        'Reusing already-open Test File: %s\n', ...
+        tf.FilePath);
+
+    return;
+end
+
+
+%% Incremental: TestFile(..., false) opens an existing file or creates it
+% when it does not exist.
+
+tf = ...
+    sltest.testmanager.TestFile( ...
+        testFilePath, ...
+        false);
+
+if isfile(testFilePath)
+
+    fprintf( ...
+        'Opened Test File for incremental update: %s\n', ...
+        tf.FilePath);
+
+else
+
+    fprintf( ...
+        'Created Test File: %s\n', ...
+        tf.FilePath);
+end
+
+end
+
+
+%% ============================================================
+% Canonical path
+%% ============================================================
+
+function path = ...
+    st_canonical_test_file_path( ...
+        path)
+
+path = ...
+    char( ...
+        java.io.File( ...
+            char(path)).getCanonicalPath());
+
+end
+
+
+%% ============================================================
+% Harness Close
+%% ============================================================
+
+function st_close_harness_quiet( ...
+        ownerPath, ...
+        harnessName)
+
 try
-    sltest.harness.close(ownerPath, harnessName);
+
+    sltest.harness.close( ...
+        ownerPath, ...
+        harnessName);
+
 catch
 end
+
 end
