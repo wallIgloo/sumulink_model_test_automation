@@ -12,8 +12,13 @@ function R = st_create_test_manager()
 %   Override with Scenario : not set at base Test Case level
 %
 % Table Iteration: one 'Iteration 1'
-%   SignalEditorScenario = UT_REQ_{CUTName}_001
-%   TestSequenceScenario = UT_REQ_{CUTName}_001
+%   Direct CUT Inport exists:
+%       SignalEditorScenario = UT_REQ_{CUTName}_001
+%       TestSequenceScenario = UT_REQ_{CUTName}_001
+%
+%   No direct CUT Inport:
+%       SignalEditorScenario is NOT assigned
+%       TestSequenceScenario = UT_REQ_{CUTName}_001
 %
 % Coverage:
 %   RecordCoverage = true at Test File level and Test Case level.
@@ -51,6 +56,8 @@ end
 n = height(T);
 AssessmentBlock = strings(n,1);
 ScenarioName = strings(n,1);
+HasDirectInport = false(n,1);
+SignalEditorScenarioApplied = false(n,1);
 Status = strings(n,1);
 Message = strings(n,1);
 Timestamp = strings(n,1);
@@ -67,6 +74,19 @@ for i = 1:n
         if isempty(testCaseName)
             error('TestCaseName is empty. Row No=%d', T.No(i));
         end
+
+        directInports = ...
+            find_system( ...
+                ownerPath, ...
+                'SearchDepth', 1, ...
+                'Type', 'Block', ...
+                'BlockType', 'Inport');
+
+        hasDirectInport = ...
+            ~isempty(directInports);
+
+        HasDirectInport(i) = ...
+            hasDirectInport;
 
         st_force_model_stopped(cfg.TopModel);
         sltest.harness.load(ownerPath, harnessName);
@@ -86,7 +106,17 @@ for i = 1:n
 
         iter = sltest.testmanager.TestIteration;
         iter.Enabled = true;
-        setTestParam(iter, 'SignalEditorScenario', scenarioName);
+
+        % Keep this condition identical to st_configure_signal_editors:
+        % when the CUT has no direct Inport, no Signal Editor scenario is
+        % configured there, so the Test Manager iteration must not request
+        % a SignalEditorScenario that does not exist.
+        if hasDirectInport
+            setTestParam(iter, 'SignalEditorScenario', scenarioName);
+            SignalEditorScenarioApplied(i) = true;
+        end
+
+        % Test Assessment scenario is independent of CUT input existence.
         setTestParam(iter, 'TestSequenceScenario', scenarioName);
         addIteration(tc, iter, 'Iteration 1');
 
@@ -96,8 +126,21 @@ for i = 1:n
 
         st_close_harness_quiet(ownerPath, harnessName);
         Status(i) = 'OK';
-        Message(i) = 'Test Case + Iteration 1 + Coverage created';
-        fprintf('[%d/%d] OK   %s\n', i, n, testCaseName);
+
+        if hasDirectInport
+            Message(i) = ...
+                'Test Case + Iteration 1 + Signal Editor + Assessment + Coverage created';
+        else
+            Message(i) = ...
+                'Test Case + Iteration 1 + Assessment + Coverage created; Signal Editor scenario omitted because CUT has no direct Inport';
+        end
+
+        fprintf('[%d/%d] OK   %s | DirectInport=%d | SignalEditorScenario=%d\n', ...
+            i, ...
+            n, ...
+            testCaseName, ...
+            hasDirectInport, ...
+            SignalEditorScenarioApplied(i));
 
     catch ME
         st_close_harness_quiet(ownerPath, harnessName);
@@ -118,9 +161,11 @@ end
 saveToFile(tf);
 
 R = table(T.No, T.CUTName, T.TestCaseName, T.HarnessName, AssessmentBlock, ...
-    ScenarioName, Status, Message, Timestamp, ...
+    ScenarioName, HasDirectInport, SignalEditorScenarioApplied, ...
+    Status, Message, Timestamp, ...
     'VariableNames', {'No','CUTName','TestCaseName','HarnessName','AssessmentBlock', ...
-    'ScenarioName','Status','Message','Timestamp'});
+    'ScenarioName','HasDirectInport','SignalEditorScenarioApplied', ...
+    'Status','Message','Timestamp'});
 
 st_write_result('TestManagerResult', R);
 fprintf('Test Manager saved: %s\n', cfg.TestFile);

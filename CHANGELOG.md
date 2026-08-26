@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9.4
+
+- Fixed Test Manager iteration setup for CUTs with no direct Inport.
+- `st_create_test_manager` now uses the same direct-Inport condition as `st_configure_signal_editors`.
+- When a CUT has no direct Inport, `SignalEditorScenario` is no longer assigned to `Iteration 1`.
+- `TestSequenceScenario` is still assigned because the Test Assessment scenario is independent of CUT input existence.
+- Added `HasDirectInport` and `SignalEditorScenarioApplied` columns to `TestManagerResult` for traceability.
+
 ## v0.9.3
 
 - Changed `st_export_subsystem_paths` to exhaustive inventory mode for human path selection.

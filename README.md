@@ -1,4 +1,23 @@
-# Simulink Test Automation v0.9.3
+# Simulink Test Automation v0.9.4
+
+## v0.9.4 - Test Manager input-scenario guard
+
+`st_configure_signal_editors` intentionally skips Signal Editor scenario configuration when the CUT has no direct Inport. Test Manager now follows the same rule.
+
+For a CUT with a direct Inport, `Iteration 1` contains both:
+
+```text
+SignalEditorScenario = UT_REQ_{CUTName}_001
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+For a CUT with no direct Inport, `Iteration 1` contains only:
+
+```text
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+`SignalEditorScenario` is not assigned, preventing execution from requesting a Signal Editor scenario that was never created/renamed for that CUT. `TestManagerResult` records `HasDirectInport` and `SignalEditorScenarioApplied`.
 
 
 ## v0.9.3 - exhaustive subsystem inventory

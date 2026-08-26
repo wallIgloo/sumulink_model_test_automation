@@ -1,3 +1,6 @@
+## Test Manager no-input rule
+
+`st_configure_signal_editors` still skips CUTs that have no direct Inport. `st_create_test_manager` now mirrors that decision: it assigns `SignalEditorScenario` only when a direct CUT Inport exists. `TestSequenceScenario` is always assigned because the Assessment scenario remains required. `TestManagerResult` includes `HasDirectInport` and `SignalEditorScenarioApplied`.
 
 ## Exhaustive inventory rule
 
@@ -5,9 +8,9 @@
 
 # Simulink Test Automation - Work Handoff
 
-## Current baseline: v0.9.3
+## Current baseline: v0.9.4
 
-The v0.9.1 Simulink/Test workflow is preserved. v0.9.2 adds a diagnostic layer for company-managed Excel environments where one Excel automation path may fail while another xlwings path succeeds.
+The v0.9.1 Simulink/Test workflow is preserved. v0.9.2 adds a diagnostic layer for company-managed Excel environments where one Excel automation path may fail while another xlwings path succeeds. v0.9.3 broadens subsystem inventory discovery. v0.9.4 prevents Test Manager from assigning a nonexistent Signal Editor scenario to CUTs with no direct Inport.
 
 ## Excel diagnostic
 
