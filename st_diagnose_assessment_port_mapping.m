@@ -1,14 +1,13 @@
-function R = st_diagnose_assessment_port_mapping(targetNo)
+function R = st_diagnose_assessment_port_mapping(ownerPath, harnessName)
 %ST_DIAGNOSE_ASSESSMENT_PORT_MAPPING Verify Harness Outport <-> Assessment Input mapping.
 %
-% This diagnostic does not modify the Harness, Assessment, or model.
+% This diagnostic does not use Targets.No or the management Excel.
+% The CUT owner path and Harness name are supplied directly.
 %
 % Usage:
-%   R = st_diagnose_assessment_port_mapping();
-%       Select one enabled CUT from a dialog.
-%
-%   R = st_diagnose_assessment_port_mapping(3);
-%       Diagnose the Targets row whose No value is 3.
+%   R = st_diagnose_assessment_port_mapping( ...
+%       'TEST_TARGET_MODEL_NAME/SubsystemA', ...
+%       'SubsystemA_Harness1');
 %
 % What this checks:
 %   1. Stateflow.Data.Port is read for each Test Assessment Input symbol.
@@ -29,31 +28,29 @@ function R = st_diagnose_assessment_port_mapping(targetNo)
 %   - '/', spaces, '-', and other characters are preserved exactly as read.
 %   - Assessment symbol names are reported exactly as Stateflow created them.
 
-cfg = st_require_runtime_target();
-T = st_load_targets(cfg.OnlyEnabled);
+if nargin < 2 || ...
+        isempty(ownerPath) || ...
+        isempty(harnessName)
 
-if isempty(T)
-    error('No enabled CUT targets are available.');
+    error([ ...
+        'Usage: st_diagnose_assessment_port_mapping(' ...
+        '''TEST_TARGET_MODEL_NAME/CUTPath'', ''HarnessName'')']);
 end
 
-row = st_diag_select_target_row(T, targetNo);
+cfg = st_require_runtime_target();
 
 ownerPath = ...
     st_normalize_cut_path( ...
-        T.CUTPath(row), ...
+        ownerPath, ...
         cfg.TopModel);
 
 harnessName = ...
-    char(T.HarnessName(row));
-
-cutName = ...
-    char(T.CUTName(row));
+    char(harnessName);
 
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Assessment Port Mapping Diagnostic\n');
 fprintf('============================================\n');
-fprintf('CUT     : %s\n', cutName);
 fprintf('Path    : %s\n', ownerPath);
 fprintf('Harness : %s\n', harnessName);
 fprintf('============================================\n');
@@ -136,63 +133,6 @@ else
 end
 
 fprintf('============================================\n');
-
-end
-
-
-function row = st_diag_select_target_row(T, targetNo)
-
-if nargin >= 2 && ...
-        ~isempty(targetNo)
-
-    if ~isnumeric(targetNo) || ...
-            ~isscalar(targetNo) || ...
-            ~isfinite(targetNo)
-
-        error('targetNo must be one numeric Targets.No value.');
-    end
-
-    matches = ...
-        find(T.No == targetNo);
-
-    if isempty(matches)
-        error('Targets.No=%g was not found among enabled targets.', targetNo);
-    end
-
-    if numel(matches) > 1
-        error('Targets.No=%g is duplicated.', targetNo);
-    end
-
-    row = matches(1);
-    return;
-end
-
-items = ...
-    cell(height(T),1);
-
-for i = 1:height(T)
-
-    items{i} = ...
-        sprintf( ...
-            'No=%g | %s | %s', ...
-            T.No(i), ...
-            char(T.CUTName(i)), ...
-            char(T.HarnessName(i)));
-end
-
-[index, ok] = ...
-    listdlg( ...
-        'PromptString', 'Select one CUT for Assessment port mapping diagnosis', ...
-        'SelectionMode', 'single', ...
-        'ListString', items, ...
-        'ListSize', [700 350], ...
-        'Name', 'Assessment Port Mapping');
-
-if ~ok || isempty(index)
-    error('Diagnostic target selection was cancelled.');
-end
-
-row = index(1);
 
 end
 
