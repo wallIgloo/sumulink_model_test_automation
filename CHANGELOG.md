@@ -1,27 +1,21 @@
 # Changelog
 
-## v0.6 - Anchor-based CUT path recommendation
+## v0.7 - Context-aware path recommendation
 
-- Improved `st_find_target_paths` for models containing many duplicated CUT names.
-- The previous Excel row is no longer assumed to be the parent CUT.
-- Existing valid CUT paths and unique CUT matches are resolved first and used as anchors.
-- Ambiguous candidates are ranked by structural similarity to resolved anchors:
-  - descendant / ancestor relationship
-  - same parent / grandparent
-  - common ancestor depth
-  - tree distance
-  - Excel row proximity as a secondary hint
-- Both earlier and later uniquely resolved CUTs can contribute as anchors.
-- Every manually confirmed ambiguous CUT immediately becomes a new anchor for the following CUTs.
-- Candidate selection shows recommendation score, parent, grandparent, relative path, and strongest anchor relation.
-- Optional Simulink preview/highlight before confirming an ambiguous candidate.
-- Added `st_score_path_candidates.m` as an independently testable scoring helper.
-- Added config options:
-  - `cfg.PathFinderAnchorCount`
-  - `cfg.PathFinderPreviewSelection`
+- Excel depth/indent is not used.
+- Added a hard filter for duplicated CUT candidates:
+  - if a later Excel CUT has a confidently resolved path,
+  - a current CUT candidate located under that later CUT is removed before scoring.
+- Added context-aware scoring from multiple nearby resolved CUT paths.
+- Added a stable context root so one recently selected deep branch does not dominate every following recommendation.
+- Duplicate-selection dialog now shows nearby physical Excel rows and resolved paths.
+- Added `cfg.PathFinderExcelContextRows`.
+- Replaced `cfg.PathFinderPreviewSelection` with `cfg.PathFinderHighlightSelection`.
+- Highlight is optional and defaults to `false`.
+- PathFinderResult now includes `FilteredCount` and `ContextRoot`.
 
-## v0.5
+## v0.6
 
-- Added target-model selection and CUT path discovery.
-- Selected model stored in `runtime_target.mat`.
-- Excel remains model-column-free; one model is shared by all CUTs in one run.
+- Added anchor-based recommendation for duplicated CUT names.
+- Existing valid paths and unique matches are used as anchors.
+- Added `st_score_path_candidates.m`.

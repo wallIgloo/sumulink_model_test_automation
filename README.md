@@ -1,4 +1,4 @@
-# Simulink Test Automation v0.6
+# Simulink Test Automation v0.7
 
 ## Recommended entry flow
 
@@ -12,51 +12,75 @@ Use `st_run_after_harness` when the harnesses already exist.
 
 ## CUT path discovery
 
-`st_find_target_paths` searches `.slx` / `.mdl` files, lets you select one target model, then resolves every enabled `CUTName` in `TestManagement.xlsx`.
+`st_find_target_paths` selects one Simulink model and resolves every enabled `CUTName` in `TestManagement.xlsx`.
 
-Excel does not need a model column. One selected model is shared by all CUTs in the current run.
+Excel does not need a model column. Excel depth/indent information is intentionally not used because it may be incomplete or inaccurate.
 
 ### Duplicate CUT names
 
-When the same CUT name exists in many locations, v0.6 no longer presents an unranked list.
+The path finder first resolves confident anchors:
 
-The resolver first establishes anchors from:
+1. an existing `CUTPath` that still matches the CUT, and
+2. CUT names having exactly one subsystem match.
 
-1. an existing `CUTPath` that is still valid, and
-2. CUT names that have exactly one matching subsystem.
+For duplicated CUT names, v0.7 applies two stages.
 
-Ambiguous candidates are then ranked using the resolved anchors. Structural relationships are stronger evidence than Excel row order. The algorithm considers descendant/ancestor relationships, same parent or grandparent, common ancestor depth, tree distance, and Excel row proximity.
+### 1. Later-CUT hard filter
 
-This means the row above the current CUT is useful context but is never assumed to be its parent.
+A current CUT candidate is removed before scoring when it is located under a later Excel CUT whose path is already confidently resolved.
 
-After you confirm one ambiguous CUT, that path immediately becomes another anchor, making the next ambiguous CUT easier to rank.
+Example:
 
-### Candidate display
+```text
+Excel: A, B, C, D, E
+D = MODEL/A/C/D
 
-Candidates are shown in recommendation order with:
+Candidate B = MODEL/A/C/D/Internal/B
+-> excluded
+```
 
-- score
-- grandparent
-- parent
-- relative path
-- strongest anchor and relation
+This prevents a CUT appearing earlier in Excel from being recommended below a confidently known later CUT.
 
-With `cfg.PathFinderPreviewSelection = true`, the selected candidate is highlighted in Simulink and must be confirmed before it is written to Excel.
+### 2. Context-aware recommendation
+
+Remaining candidates are scored using several nearby resolved paths instead of relying on only the closest previous row. The scorer derives a stable context root supported by multiple nearby anchors and combines that with parent/common-ancestor/tree-distance evidence.
+
+Excel row distance is only a weak hint and never implies parent-child hierarchy.
+
+## Excel context in the selection dialog
+
+When a duplicated CUT requires manual selection, the dialog shows the current physical Excel row and nearby rows, including already resolved relative paths.
+
+Configure the range with:
+
+```matlab
+cfg.PathFinderExcelContextRows = 3;
+```
+
+## Optional Simulink highlight
+
+Highlighting is now independent from path recommendation.
+
+```matlab
+cfg.PathFinderHighlightSelection = false;
+```
+
+- `false`: select directly from the ranked list; Simulink view is not moved.
+- `true`: open/highlight the selected candidate and ask for confirmation.
 
 ## Path finder configuration
 
 ```matlab
 cfg.ModelSearchRoot = fileparts(rootDir);
 cfg.ModelSearchRecursive = true;
-cfg.PathFinderAnchorCount = 3;
-cfg.PathFinderPreviewSelection = true;
+cfg.PathFinderAnchorCount = 5;
+cfg.PathFinderExcelContextRows = 3;
+cfg.PathFinderHighlightSelection = false;
 ```
-
-`cfg.PathFinderAnchorCount` controls how many of the strongest resolved anchors contribute to each recommendation score. The best anchor has the largest weight.
 
 ## Management Excel
 
-Expected columns remain:
+Required columns remain:
 
 - `CUTName`
 - `CUTPath`
@@ -68,4 +92,4 @@ Optional:
 - `No`
 - `Enabled`
 
-`CUTPath` can be empty before the first path-finder run. Resolved paths are written back into the same column.
+Resolved paths are written back only to the existing `CUTPath` column.

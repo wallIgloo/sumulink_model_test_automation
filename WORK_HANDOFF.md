@@ -43,3 +43,13 @@ st_run_from_harness
 st_run_after_harness
 st_run_generated_tests
 ```
+
+
+## v0.7 path finder update
+
+- Excel depth/indent is intentionally ignored.
+- Duplicate CUT selection shows nearby Excel rows and resolved paths.
+- Candidates under a confidently resolved later Excel CUT are hard-filtered before recommendation scoring.
+- Remaining candidates are ranked with a stable context derived from several nearby resolved paths.
+- `cfg.PathFinderHighlightSelection` controls optional Simulink highlighting and defaults to false.
+- `cfg.PathFinderExcelContextRows` controls the nearby Excel context shown in the selection dialog.

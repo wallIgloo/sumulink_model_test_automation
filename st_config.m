@@ -62,16 +62,21 @@ cfg.ModelSearchExcludeFolders = { ...
     'slprj', ...
     'result'};
 
-% Number of strongest resolved CUT paths used when ranking duplicated CUTs.
-% The best anchor dominates; additional anchors provide supporting evidence.
-cfg.PathFinderAnchorCount = 3;
+% Number of nearby resolved CUT paths used when ranking duplicated CUTs.
+% Multiple nearby paths are also used to derive a stable context root.
+cfg.PathFinderAnchorCount = 5;
+
+% Number of physical Excel rows shown above/below the current CUT in the
+% duplicate-selection dialog.
+cfg.PathFinderExcelContextRows = 3;
 
 % true:
 %   After choosing a duplicated CUT candidate, open/highlight it in Simulink
 %   and ask for confirmation before the path is accepted.
 % false:
-%   Accept the selected ranked candidate immediately.
-cfg.PathFinderPreviewSelection = true;
+%   Do not move/highlight the Simulink model. Accept the selected candidate
+%   directly from the ranked list.
+cfg.PathFinderHighlightSelection = false;
 
 
 %% ============================================================
