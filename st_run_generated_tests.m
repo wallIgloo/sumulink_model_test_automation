@@ -19,6 +19,15 @@ cfg = st_require_runtime_target();
 
 updateResult = table();
 
+totalTimer = tic;
+
+st_log(cfg, 'INFO', ...
+    ['Run Generated Tests start | AutoUpdate=%d | Rerun=%d | ' ...
+     'SampleTime=%.17g'], ...
+    logical(cfg.AutoUpdateExpectedOnFail), ...
+    logical(cfg.RerunAfterExpectedUpdate), ...
+    cfg.ExpectedValueSampleTime);
+
 
 %% ============================================================
 % Test File 확인
@@ -54,9 +63,18 @@ if cfg.AutoUpdateExpectedOnFail
     fprintf('Sample time : %.17g sec\n', ...
         cfg.ExpectedValueSampleTime);
 
+    st_log(cfg, 'DEBUG', ...
+        'Expected value logging preparation start');
+
+    loggingTimer = tic;
+
     st_prepare_expected_value_logging( ...
         cfg, ...
         tf);
+
+    st_log(cfg, 'DEBUG', ...
+        'Expected value logging preparation done | elapsed=%.3f sec', ...
+        toc(loggingTimer));
 end
 
 
@@ -66,8 +84,18 @@ end
 
 fprintf('\nEnabled Test Case 실행 시작...\n');
 
+st_log(cfg, 'DEBUG', ...
+    ['run(tf) start. Test Manager execution may stay inside this call ' ...
+     'for a long time.']);
+
+runTimer = tic;
+
 resultObj = ...
     run(tf);
+
+st_log(cfg, 'DEBUG', ...
+    'run(tf) returned | elapsed=%.3f sec', ...
+    toc(runTimer));
 
 fprintf('Enabled Test Case 실행 완료\n');
 
@@ -77,6 +105,10 @@ fprintf('Enabled Test Case 실행 완료\n');
 %% ============================================================
 
 if ~cfg.AutoUpdateExpectedOnFail
+
+    st_log(cfg, 'INFO', ...
+        'Run Generated Tests complete | elapsed=%.3f sec', ...
+        toc(totalTimer));
 
     return;
 end
@@ -92,9 +124,18 @@ fprintf('Update Expected Values From Test Results\n');
 fprintf('============================================\n');
 
 
+st_log(cfg, 'DEBUG', ...
+    'Expected-value result analysis/update start');
+
+updateTimer = tic;
+
 updateResult = ...
     st_update_expected_from_results( ...
         resultObj);
+
+st_log(cfg, 'DEBUG', ...
+    'Expected-value result analysis/update done | elapsed=%.3f sec', ...
+    toc(updateTimer));
 
 
 if isempty(updateResult)
@@ -133,8 +174,17 @@ if updatedTotal > 0 && ...
     fprintf('Rerun After Expected Value Update\n');
     fprintf('============================================\n');
 
+    st_log(cfg, 'DEBUG', ...
+        'rerun run(tf) start');
+
+    rerunTimer = tic;
+
     resultObj = ...
         run(tf);
+
+    st_log(cfg, 'DEBUG', ...
+        'rerun run(tf) returned | elapsed=%.3f sec', ...
+        toc(rerunTimer));
 
     fprintf('재실행 완료\n');
 
@@ -147,6 +197,10 @@ else
     fprintf('cfg.RerunAfterExpectedUpdate = false\n');
     fprintf('Expected value 갱신 후 재실행을 건너뜁니다.\n');
 end
+
+st_log(cfg, 'INFO', ...
+    'Run Generated Tests complete | elapsed=%.3f sec', ...
+    toc(totalTimer));
 
 end
 
@@ -164,11 +218,20 @@ T = ...
         cfg.OnlyEnabled);
 
 
+if ~bdIsLoaded(cfg.TopModel)
+
+    load_system( ...
+        cfg.TopModel);
+end
+
+
 st_force_model_stopped( ...
     cfg.TopModel);
 
 
 for i = 1:height(T)
+
+    itemTimer = tic;
 
     ownerPath = ...
         st_normalize_cut_path( ...
@@ -180,14 +243,34 @@ for i = 1:height(T)
 
     try
 
+        st_log(cfg, 'DEBUG', ...
+            '[LoggingPrep %d/%d] start | Harness=%s', ...
+            i, height(T), harnessName);
+
+        st_log(cfg, 'TRACE', ...
+            '[LoggingPrep %d/%d] harness.load start', ...
+            i, height(T));
+
         sltest.harness.load( ...
             ownerPath, ...
             harnessName);
 
+        st_log(cfg, 'TRACE', ...
+            '[LoggingPrep %d/%d] harness.load done', ...
+            i, height(T));
+
+
+        st_log(cfg, 'DEBUG', ...
+            '[LoggingPrep %d/%d] enable Harness output logging start', ...
+            i, height(T));
 
         logResult = ...
             st_enable_harness_output_logging( ...
                 harnessName);
+
+        st_log(cfg, 'DEBUG', ...
+            '[LoggingPrep %d/%d] output logging result rows=%d', ...
+            i, height(T), height(logResult));
 
 
         if any(strcmp(logResult.Status, 'FAIL'))
@@ -203,13 +286,25 @@ for i = 1:height(T)
         end
 
 
+        st_log(cfg, 'TRACE', ...
+            '[LoggingPrep %d/%d] save_system start', ...
+            i, height(T));
+
         save_system( ...
             cfg.TopModel);
+
+        st_log(cfg, 'TRACE', ...
+            '[LoggingPrep %d/%d] save_system done; closing Harness', ...
+            i, height(T));
 
 
         st_close_harness_quiet( ...
             ownerPath, ...
             harnessName);
+
+        st_log(cfg, 'DEBUG', ...
+            '[LoggingPrep %d/%d] finished | elapsed=%.3f sec', ...
+            i, height(T), toc(itemTimer));
 
 
     catch ME

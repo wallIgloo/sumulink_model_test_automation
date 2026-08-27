@@ -1,31 +1,67 @@
-Execution timing patch
+Verbose progress logging patch
 
-적용 파일
+설정
+----
+st_config.m:
+
+    cfg.VerboseLogging = true;   % 상세 로그 ON
+    cfg.VerboseLogging = false;  % 상세 로그 OFF
+
+VerboseLogging=false여도 기존 START / OK / FAIL / 요약 메시지는 유지됩니다.
+추가된 INFO / DEBUG / TRACE 로그만 사라집니다.
+
+추가 파일
+---------
+st_log.m
+
+적용 대상
+---------
 - st_run_from_harness.m
 - st_run_after_harness.m
 - st_create_harnesses.m
-
-변경 내용
-1. 전체 workflow 시작/종료 시각과 총 소요시간 표시
-2. 각 workflow 단계별 START / DONE / FAILED 시각 표시
-3. 각 workflow 단계별 elapsed 표시 (HH:MM:SS.mmm)
-4. Harness 생성은 각 CUT별 시작/종료/소요시간/누적시간 표시
-5. sltest.harness.create 호출 직전/리턴 직후 시각을 별도로 표시
+- st_configure_harnesses.m
+- st_configure_signal_editors.m
+- st_configure_assessments.m
+- st_create_test_manager.m
+- st_run_generated_tests.m
+- st_update_expected_from_results.m
+- st_config.m
 
 예시
-[2/7] Create Harnesses
-START : 2026-08-27 09:15:10
-...
-[3/20] START CUT_X
-  -> Creating Harness... start=2026-08-27 09:17:01
-  -> Harness create returned at 2026-08-27 09:21:44
-  Finish  : 2026-08-27 09:21:45
-  Elapsed : 00:04:44.123
-  Total   : 00:06:35.812
-...
-[2/7] DONE Create Harnesses
-ELAPSED : 00:32:10.441
+----
+[2026-08-27 09:20:01][DEBUG] [Assessment 3/20] harness.load start
+[2026-08-27 09:20:06][DEBUG] [Assessment 3/20] harness.load done
+[2026-08-27 09:20:06][DEBUG] [Assessment 3/20] Scenario input count=3 | names=[A, B, C]
+[2026-08-27 09:20:06][TRACE] [Assessment 3/20] map #1 | AssessmentPort=4 | AssessmentSymbol=AB | HarnessPort=1 | HarnessSignal=A/B
+[2026-08-27 09:20:07][DEBUG] [Assessment 3/20] build verify action start | targets=1
 
-주의
-- MATLAB의 sltest.harness.create 자체가 블로킹되는 동안에는 내부 진행률을
-  안전하게 얻을 수 없어서, 호출 직전/직후 시각을 표시하는 방식입니다.
+목적
+----
+오래 걸리는 작업이 멈춘 것처럼 보일 때 마지막 로그를 보면 MATLAB이 현재
+어느 API 호출 안에 있는지 확인할 수 있습니다.
+
+예:
+    [DEBUG] harness.load start
+이후 로그가 없다면 현재 harness.load 내부에서 대기 중인 것입니다.
+
+    [DEBUG] entering sltest.harness.create
+이후 로그가 없다면 Harness create/compile 내부에서 대기 중인 것입니다.
+
+    [DEBUG] run(tf) start
+이후 로그가 없다면 Test Manager 실행 내부에서 대기 중인 것입니다.
+
+제한
+----
+sltest.harness.create(), sltest.harness.load(), run(tf) 같은 MATLAB/Simulink
+blocking API 내부의 실제 퍼센트 진행률은 사용하지 않습니다.
+따라서 하나의 blocking call이 수 분 걸리는 동안 주기적인 heartbeat가 반드시
+출력되는 구조는 아닙니다. 대신 모든 긴 호출 직전/직후에 로그를 두어
+'어디에서 오래 걸리는지'를 식별하도록 했습니다.
+
+포함된 기존 패치
+---------------
+이 패치의 파일들은 이 대화에서 만든 다음 변경을 유지한 상태를 기준으로 합니다.
+- Test Manager incremental mode / OverwriteTestFile=false
+- Assessment scenario-offset v2 mapping
+- Expected update AssessmentSymbol -> Harness output mapping
+- workflow 단계별 실행 시간 표시

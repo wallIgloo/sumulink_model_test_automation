@@ -21,6 +21,10 @@ cfg = st_require_runtime_target();
 
 totalTimer = tic;
 
+st_log(cfg, 'INFO', ...
+    'VerboseLogging=%d', ...
+    logical(cfg.VerboseLogging));
+
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Simulink Test Full Automation\n');

@@ -250,6 +250,20 @@ cfg.OnlyEnabled = true;
 
 
 %% ============================================================
+% Progress / diagnostic logging
+%% ============================================================
+
+% true:
+%   Print detailed timestamped checkpoints around long-running operations.
+%   Useful for identifying the exact API call MATLAB is currently waiting on.
+%
+% false:
+%   Suppress detailed INFO / DEBUG / TRACE logs.
+%   Existing normal START / OK / FAIL / summary messages are still printed.
+cfg.VerboseLogging = true;
+
+
+%% ============================================================
 % Result
 %% ============================================================
 
