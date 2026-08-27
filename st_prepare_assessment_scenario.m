@@ -1,9 +1,9 @@
 function st_prepare_assessment_scenario( ...
         assessmentBlock, ...
-        scenarioName, ...
+        scenarioNames, ...
         verifyAction, ...
         transitionCondition)
-%ST_PREPARE_ASSESSMENT_SCENARIO Normalize to one scenario and two steps.
+%ST_PREPARE_ASSESSMENT_SCENARIO Rebuild scenarios with identical steps.
 %
 %   scenarioName
 %      step1 --transitionCondition--> step2
@@ -14,26 +14,39 @@ function st_prepare_assessment_scenario( ...
 % Default transitionCondition:
 %   true
 
-assessmentBlock = char(assessmentBlock);
-scenarioName = char(scenarioName);
-verifyAction = char(verifyAction);
-
 if nargin < 4 || isempty(transitionCondition)
     transitionCondition = 'true';
 end
 
+assessmentBlock = char(assessmentBlock);
+scenarioNames = normalize_cellstr(scenarioNames);
+verifyAction = char(verifyAction);
 transitionCondition = char(transitionCondition);
 
+if isempty(scenarioNames)
+    error('At least one Assessment scenario name is required.');
+end
 
-%% ============================================================
-% Scenario 정리
-%% ============================================================
+ensure_scenario_set(assessmentBlock, scenarioNames);
+
+for scenarioIndex = 1:numel(scenarioNames)
+    prepare_one_scenario(assessmentBlock, scenarioNames{scenarioIndex}, ...
+        verifyAction, transitionCondition);
+end
+
+sltest.testsequence.activateScenario( ...
+    assessmentBlock, scenarioNames{1});
+
+end
+
+
+function ensure_scenario_set(assessmentBlock, scenarioNames)
 
 if ~sltest.testsequence.isUsingScenarios(assessmentBlock)
 
     sltest.testsequence.useScenario( ...
         assessmentBlock, ...
-        scenarioName);
+        scenarioNames{1});
 
 else
 
@@ -63,20 +76,26 @@ else
 
     if ~strcmp( ...
             keepScenario, ...
-            scenarioName)
+            scenarioNames{1})
 
         sltest.testsequence.editScenario( ...
             assessmentBlock, ...
             keepScenario, ...
             'Name', ...
-            scenarioName);
+            scenarioNames{1});
     end
 end
 
+for k = 2:numel(scenarioNames)
+    sltest.testsequence.addScenario(assessmentBlock, scenarioNames{k});
+end
+end
 
-sltest.testsequence.activateScenario( ...
-    assessmentBlock, ...
-    scenarioName);
+
+function prepare_one_scenario( ...
+        assessmentBlock, scenarioName, verifyAction, transitionCondition)
+
+sltest.testsequence.activateScenario(assessmentBlock, scenarioName);
 
 
 %% ============================================================

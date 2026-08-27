@@ -21,6 +21,8 @@ MATLAB/Simulink Test 자동화 도구입니다. Excel에서 CUT, Harness, Test C
 
 - `No`
 - `Enabled`
+- `SldvMode`: `OFF`(기본값), `FILE`, `GENERATE`
+- `SldvDataFile`: `FILE`일 때 필수. 절대 경로 또는 `TestManagement.xlsx` 기준 상대 경로
 
 모든 CUT는 한 번의 실행에서 선택한 동일한 Top Model을 사용합니다. `ModelName` 열은 추가하지 않습니다.
 
@@ -71,13 +73,14 @@ st_run_after_harness
 
 1. CUTPath 사전 검증
 2. 누락된 Harness 생성
-3. Harness StopTime 설정
-4. Signal Editor 설정
-5. Test Assessment 설정
-6. Test Manager 생성 또는 증분 갱신
-7. 설정에 따른 Test 실행 및 expected-value 갱신
+3. 행별 SLDV 데이터 생성 또는 입력 파일 사전 검증
+4. Harness StopTime 설정
+5. Signal Editor 설정
+6. Test Assessment 설정
+7. Test Manager 생성 또는 증분 갱신
+8. 설정에 따른 Test 실행 및 expected-value 갱신
 
-`st_run_after_harness`는 기존 Harness 존재 여부를 검증한 뒤 3번부터 실행합니다.
+`st_run_after_harness`는 기존 Harness 존재 여부를 검증한 뒤 SLDV 준비 단계부터 실행합니다.
 
 각 단계는 결과를 `result` 폴더에 CSV로 기록하고, 가능한 경우 `TestManagement.xlsx`의 결과 Sheet에도 기록합니다.
 
@@ -108,7 +111,37 @@ UT_REQ_{CUTName}_001
 
 입력값과 waveform은 변경하지 않습니다.
 
-direct CUT Inport가 없으면 Signal Editor 설정을 `SKIP_NO_INPORT`로 건너뜁니다. 이 규칙은 Assessment 입력 매핑 규칙과 별개입니다.
+`OFF` 모드에서 direct CUT Inport가 없으면 Signal Editor 설정을 `SKIP_NO_INPORT`로 건너뜁니다. SLDV 모드는 direct Inport 연결을 전제로 하므로 같은 경우를 실패 처리합니다. 이 규칙은 Assessment 입력 매핑 규칙과 별개입니다.
+
+## SLDV scenario workflow
+
+`SldvMode=FILE`은 지정된 SLDV MAT 파일을 읽고, `GENERATE`는 Top Model의 현재 Design Verifier 설정을 복사해 해당 atomic CUT에 `TestGeneration`을 실행합니다. 생성 모드에서는 Harness/Report 생성을 끄고 성공한 데이터만 다음 위치의 latest 파일로 교체합니다.
+
+```text
+result/sldv/{No}_{CUTName}/latest_sldvdata.mat
+```
+
+SLDV 데이터의 subsystem 경로, 유효한 TestCase, 시간값, Dataset 인터페이스, CUT 직접 Inport 및 Iteration에 적용할 파라미터 metadata를 실제 Harness 변경 전에 검증합니다. 파라미터 source가 반환되면 그대로 사용하고, 생략된 경우에는 Test Manager의 기본 source 해석을 사용합니다. 모든 입력의 `dataNoEffect`가 true인 TestCase는 제외합니다. SLDV Signal Editor MAT 파일을 다른 Harness가 공유하면 변경하지 않고 실패합니다.
+
+`SldvGenerationResult`에는 mode, source/effective 파일, `sldvrun` status·실행 시간, `Tmax`와 실패 사유를 기록하고, `SldvScenarioResult`에는 원본 TestCase 번호·이름, 생성 Scenario, 원래 종료 시간, `Tmax`, parameter override 수를 기록합니다.
+
+유효한 TestCase는 다음과 같이 연속된 Scenario로 변환됩니다.
+
+```text
+UT_REQ_{CUTName}_001
+UT_REQ_{CUTName}_002
+...
+```
+
+해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다.
+
+- Harness `StopTime = Tmax`
+- 모든 Assessment 전이 `after(Tmax, sec)`
+- Signal Editor `OutputAfterFinalValue = Holding final value`
+- TestCase마다 같은 이름의 Signal Editor Scenario, Assessment Scenario 및 Table Iteration 생성
+- SLDV parameter value를 해당 Iteration의 variable override로 적용
+
+따라서 종료 시간이 각각 `10.1`, `1.0`초인 경우 StopTime과 전이는 `10.1`초이며, 짧은 입력은 `1.0~10.1`초 구간에서 마지막 값을 유지합니다. `OFF`는 기존 단일 `_001` workflow를 그대로 사용합니다.
 
 ## Assessment output mapping
 
@@ -145,7 +178,7 @@ verify(AB == 0);
 
 기본 설정은 Harness의 최상위 Outport에 대응하는 Assessment Input만 검증합니다. 스칼라, numeric array, Bus, nested Bus를 지원하며 Bus 배열은 기본적으로 첫 Bus instance만 검증합니다. Bus leaf의 numeric array는 전체 요소를 검증합니다.
 
-Assessment Scenario는 하나의 Scenario와 두 Step으로 정리됩니다.
+`OFF`에서는 Assessment를 하나의 Scenario와 두 Step으로 정리합니다.
 
 ```text
 step1 --true--> step2
@@ -153,6 +186,8 @@ step2 action: generated verify(...)
 ```
 
 `cfg.VerifyAtSampleTimeOnly = true`이면 transition은 `after(ExpectedValueSampleTime, sec)` 형태가 됩니다.
+
+SLDV 모드에서는 TestCase 수만큼 동일 구조의 Assessment Scenario를 다시 만들고, `VerifyAtSampleTimeOnly` 설정과 관계없이 모든 transition을 `after(Tmax, sec)`로 구성합니다.
 
 ## Test Manager incremental behavior
 
@@ -189,6 +224,8 @@ SignalEditorScenario is not assigned
 TestSequenceScenario = UT_REQ_{CUTName}_001
 ```
 
+SLDV 모드에서는 기존 Test Case가 있어도 해당 Test Case의 Table Iteration만 완전 초기화한 뒤 Scenario 수만큼 다시 생성합니다. 다른 Test Case는 보존합니다. 각 Iteration 이름과 `SignalEditorScenario`, `TestSequenceScenario`는 같은 `UT_REQ_{CUTName}_{NNN}` 값을 사용합니다.
+
 ## Test execution and expected-value update
 
 기본 실행 설정:
@@ -201,6 +238,8 @@ cfg.RerunAfterExpectedUpdate = true;
 ```
 
 expected-value updater는 Failed Iteration만 처리합니다. Assessment의 `verify(...)` 왼쪽 symbol을 Assessment Port와 Scenario offset을 사용해 원래 Harness SignalName/OutportBlock에 연결하고, 지정 시점의 logged 실제값으로 RHS를 갱신합니다.
+
+SLDV Iteration은 각 Scenario의 결과를 개별 처리하고 `Tmax` 시점의 실제값을 사용합니다. 실행 직후 `getVerifyRuns` 결과에서 활성 Scenario의 `step2` verify가 없거나 `Untested`이면 tail time을 추가하지 않고 timing 실패로 기록합니다.
 
 ```text
 Assessment symbol
@@ -246,3 +285,5 @@ st_diagnose_excel_access(true)
 - 증분 Test Manager 동작
 - verbose logging 출력
 - expected-value 갱신 후 재실행
+- SLDV FILE/GENERATE end-to-end 생성과 다중 Iteration 실행
+- 정확히 `Tmax`인 StopTime에서 Assessment verify가 tested 상태가 되는지 확인

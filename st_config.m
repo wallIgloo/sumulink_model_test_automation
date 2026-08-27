@@ -126,6 +126,19 @@ cfg.ManagementSheet = 'Targets';
 
 
 %% ============================================================
+% Simulink Design Verifier
+%% ============================================================
+
+% Per-row SLDV preparation writes a manifest here. Later workflow stages
+% use the manifest so GENERATE analysis runs only once per automation run.
+cfg.SldvDir = ...
+    fullfile(rootDir, 'result', 'sldv');
+
+cfg.SldvManifestFile = ...
+    fullfile(cfg.SldvDir, 'sldv_manifest.mat');
+
+
+%% ============================================================
 % Harness
 %% ============================================================
 

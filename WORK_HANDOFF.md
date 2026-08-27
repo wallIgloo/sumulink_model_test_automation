@@ -16,11 +16,12 @@ v0.9.6 candidate baseline:
 
 1. CUT path pre-validation
 2. Missing Harness creation
-3. Harness configuration
-4. Signal Editor configuration
-5. Test Assessment configuration
-6. Test Manager creation or incremental extension
-7. Optional test execution and expected-value update
+3. Per-row SLDV generation/file validation and manifest creation
+4. Harness configuration
+5. Signal Editor configuration
+6. Test Assessment configuration
+7. Test Manager creation or incremental extension
+8. Optional test execution and expected-value update
 
 `st_run_after_harness` validates existing CUT/Harness mappings and starts from Harness configuration.
 
@@ -184,6 +185,8 @@ Optional columns:
 
 - `No`
 - `Enabled`
+- `SldvMode` (`OFF`, `FILE`, `GENERATE`; missing/blank means `OFF`)
+- `SldvDataFile` (`FILE` mode only)
 
 Do not add a `ModelName` column. One selected runtime model is shared by all target rows.
 
@@ -226,7 +229,12 @@ st_collect_harness_output_signals.m
 st_configure_assessments.m
 st_build_verify_action.m
 st_prepare_assessment_scenario.m
+st_prepare_sldv_targets.m
+st_get_sldv_profile.m
+st_normalize_sldv_parameters.m
+st_apply_sldv_parameters.m
 st_create_test_manager.m
 st_run_generated_tests.m
 st_update_expected_from_results.m
+st_validate_sldv_verify_results.m
 ```

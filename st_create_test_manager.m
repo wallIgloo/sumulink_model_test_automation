@@ -17,22 +17,20 @@ function R = st_create_test_manager()
 %   - If the file exists but is not open, open it.
 %   - If the file does not exist, create it.
 %   - Preserve existing Test Cases.
-%   - If the same TestCaseName already exists in the requested suite, SKIP.
-%   - Create only missing Test Cases.
+%   - OFF mode skips an existing TestCaseName.
+%   - FILE/GENERATE mode preserves the Test Case and replaces only its
+%     table iterations after all new iterations are prepared successfully.
 %
 % Test Case Inputs:
 %   Signal Editor Scenario : OFF at base Test Case level
 %   Test Sequence Block    : Test Assessment block
 %   Override with Scenario : not set at base Test Case level
 %
-% Table Iteration: one 'Iteration 1'
-%   Direct CUT Inport exists:
-%       SignalEditorScenario = UT_REQ_{CUTName}_001
-%       TestSequenceScenario = UT_REQ_{CUTName}_001
-%
-%   No direct CUT Inport:
-%       SignalEditorScenario is NOT assigned
-%       TestSequenceScenario = UT_REQ_{CUTName}_001
+% Table Iterations:
+%   OFF mode keeps the legacy single 'Iteration 1'.
+%   FILE/GENERATE creates one named iteration per SLDV TestCase and assigns
+%   the same UT_REQ_{CUTName}_{NNN} value to both scenario parameters.
+%   OFF mode without a direct CUT Inport omits SignalEditorScenario.
 %
 % Coverage:
 %   RecordCoverage = true at Test File level and Test Case level.
@@ -142,6 +140,8 @@ n = ...
 
 AssessmentBlock = strings(n,1);
 ScenarioName = strings(n,1);
+IterationCount = zeros(n,1);
+ParameterOverrideCount = zeros(n,1);
 HasDirectInport = false(n,1);
 SignalEditorScenarioApplied = false(n,1);
 ExistingTestCase = false(n,1);
@@ -188,15 +188,15 @@ for i = 1:n
         char( ...
             T.TestCaseName(i));
 
-    scenarioName = ...
-        st_scenario_name( ...
-            T.CUTName(i));
+    profile = st_get_sldv_profile(T(i,:), cfg);
+    scenarioNames = profile.ScenarioNames;
+    scenarioName = scenarioNames{1};
 
     ScenarioName(i) = ...
-        string( ...
-            scenarioName);
+        string(strjoin(scenarioNames, ', '));
 
     tc = [];
+    createdThisRun = false;
     timerValue = tic;
 
     st_log(cfg, 'DEBUG', ...
@@ -231,7 +231,7 @@ for i = 1:n
             '[TestManager %d/%d] existing Test Case count=%d', ...
             i, n, numel(existingTc));
 
-        if ~isempty(existingTc)
+        if ~isempty(existingTc) && strcmp(profile.Mode, 'OFF')
 
             ExistingTestCase(i) = ...
                 true;
@@ -277,6 +277,15 @@ for i = 1:n
             continue;
         end
 
+        if ~isempty(existingTc)
+            if numel(existingTc) ~= 1
+                error('Multiple Test Cases have the same name: %s', testCaseName);
+            end
+            ExistingTestCase(i) = true;
+            tc = existingTc(1);
+            Action(i) = 'UPDATED_SLDV';
+        end
+
 
         %% ====================================================
         % Direct CUT Inport
@@ -295,6 +304,10 @@ for i = 1:n
 
         hasDirectInport = ...
             ~isempty(directInports);
+
+        if ~strcmp(profile.Mode, 'OFF') && ~hasDirectInport
+            error('SLDV mode requires direct CUT Inports: %s', ownerPath);
+        end
 
         HasDirectInport(i) = ...
             hasDirectInport;
@@ -344,11 +357,14 @@ for i = 1:n
             '[TestManager %d/%d] createTestCase start', ...
             i, n);
 
-        tc = ...
-            createTestCase( ...
-                ts, ...
-                'simulation', ...
-                testCaseName);
+        if isempty(tc)
+            tc = ...
+                createTestCase( ...
+                    ts, ...
+                    'simulation', ...
+                    testCaseName);
+            createdThisRun = true;
+        end
 
         st_log(cfg, 'DEBUG', ...
             '[TestManager %d/%d] createTestCase done', ...
@@ -374,55 +390,45 @@ for i = 1:n
         % Iteration
         %% ====================================================
 
-        st_log(cfg, 'TRACE', ...
-            '[TestManager %d/%d] creating Iteration 1', ...
-            i, n);
+        preparedIterations = cell(numel(scenarioNames), 1);
+        preparedIterationNames = cell(numel(scenarioNames), 1);
+        for scenarioIndex = 1:numel(scenarioNames)
+            currentScenario = scenarioNames{scenarioIndex};
+            iter = sltest.testmanager.TestIteration;
+            iter.Enabled = true;
 
-        iter = ...
-            sltest.testmanager.TestIteration;
+            if hasDirectInport
+                setTestParam(iter, 'SignalEditorScenario', currentScenario);
+                SignalEditorScenarioApplied(i) = true;
+            end
+            setTestParam(iter, 'TestSequenceScenario', currentScenario);
 
-        iter.Enabled = ...
-            true;
+            if strcmp(profile.Mode, 'OFF')
+                iterationName = 'Iteration 1';
+            else
+                [~, params] = sldvsimdata(profile.EffectiveDataFile, ...
+                    profile.SourceIndices(scenarioIndex));
+                ParameterOverrideCount(i) = ParameterOverrideCount(i) + ...
+                    st_apply_sldv_parameters(iter, params, ...
+                    profile.SourceIndices(scenarioIndex));
+                iterationName = currentScenario;
+            end
 
-
-        % Keep this condition identical to st_configure_signal_editors:
-        % when the CUT has no direct Inport, no Signal Editor scenario is
-        % configured there, so the Test Manager iteration must not request
-        % a SignalEditorScenario that does not exist.
-        if hasDirectInport
-
-            setTestParam( ...
-                iter, ...
-                'SignalEditorScenario', ...
-                scenarioName);
-
-            SignalEditorScenarioApplied(i) = ...
-                true;
-
-            st_log(cfg, 'TRACE', ...
-                '[TestManager %d/%d] SignalEditorScenario=%s', ...
-                i, n, scenarioName);
+            preparedIterations{scenarioIndex} = iter;
+            preparedIterationNames{scenarioIndex} = iterationName;
         end
 
-
-        % Test Assessment scenario is independent of CUT input existence.
-        setTestParam( ...
-            iter, ...
-            'TestSequenceScenario', ...
-            scenarioName);
-
-        st_log(cfg, 'TRACE', ...
-            '[TestManager %d/%d] TestSequenceScenario=%s', ...
-            i, n, scenarioName);
-
-        addIteration( ...
-            tc, ...
-            iter, ...
-            'Iteration 1');
+        if strcmp(profile.Mode, 'OFF')
+            addIteration(tc, preparedIterations{1}, preparedIterationNames{1});
+        else
+            replace_test_iterations(tc, preparedIterations, ...
+                preparedIterationNames);
+        end
+        IterationCount(i) = numel(preparedIterations);
 
         st_log(cfg, 'DEBUG', ...
-            '[TestManager %d/%d] Iteration 1 added', ...
-            i, n);
+            '[TestManager %d/%d] iterations added=%d', ...
+            i, n, IterationCount(i));
 
 
         %% ====================================================
@@ -449,14 +455,21 @@ for i = 1:n
             ownerPath, ...
             harnessName);
 
-        Action(i) = ...
-            'CREATED';
+        if ~ExistingTestCase(i)
+            Action(i) = 'CREATED';
+        end
 
         Status(i) = ...
             'OK';
 
 
-        if hasDirectInport
+        if ~strcmp(profile.Mode, 'OFF')
+
+            Message(i) = sprintf(['SLDV target initialized; iterations=%d, ' ...
+                'parameterOverrides=%d'], IterationCount(i), ...
+                ParameterOverrideCount(i));
+
+        elseif hasDirectInport
 
             Message(i) = ...
                 ['Test Case + Iteration 1 + Signal Editor + ' ...
@@ -472,12 +485,13 @@ for i = 1:n
 
         fprintf( ...
             ['[%d/%d] OK   %s | ' ...
-             'DirectInport=%d | SignalEditorScenario=%d\n'], ...
+             'DirectInport=%d | SignalEditorScenario=%d | Iterations=%d\n'], ...
             i, ...
             n, ...
             testCaseName, ...
             hasDirectInport, ...
-            SignalEditorScenarioApplied(i));
+            SignalEditorScenarioApplied(i), ...
+            IterationCount(i));
 
 
     catch ME
@@ -487,7 +501,7 @@ for i = 1:n
             harnessName);
 
 
-        if ~isempty(tc)
+        if ~isempty(tc) && createdThisRun
 
             try
 
@@ -561,6 +575,8 @@ R = ...
         T.HarnessName, ...
         AssessmentBlock, ...
         ScenarioName, ...
+        IterationCount, ...
+        ParameterOverrideCount, ...
         HasDirectInport, ...
         SignalEditorScenarioApplied, ...
         ExistingTestCase, ...
@@ -576,6 +592,8 @@ R = ...
             'HarnessName', ...
             'AssessmentBlock', ...
             'ScenarioName', ...
+            'IterationCount', ...
+            'ParameterOverrideCount', ...
             'HasDirectInport', ...
             'SignalEditorScenarioApplied', ...
             'ExistingTestCase', ...
@@ -599,6 +617,8 @@ fprintf('CREATED : %d\n', ...
     sum(Action == 'CREATED'));
 fprintf('SKIPPED : %d\n', ...
     sum(Action == 'SKIP_EXISTING'));
+fprintf('UPDATED : %d\n', ...
+    sum(Action == 'UPDATED_SLDV'));
 fprintf('FAILED  : %d\n', ...
     sum(Action == 'FAILED'));
 fprintf('Total   : %d\n', ...
@@ -611,6 +631,49 @@ st_log(cfg, 'INFO', ...
     'Create Test Manager complete | elapsed=%.3f sec', ...
     toc(totalTimer));
 
+end
+
+
+%% ============================================================
+% Targeted iteration replacement with rollback
+%% ============================================================
+
+function replace_test_iterations(tc, newIterations, newNames)
+
+oldIterations = getIterations(tc);
+oldNames = cell(numel(oldIterations), 1);
+for i = 1:numel(oldIterations)
+    oldNames{i} = char(oldIterations(i).Name);
+end
+
+if ~isempty(oldIterations)
+    deleteIterations(tc, oldIterations);
+end
+
+addedCount = 0;
+try
+    for i = 1:numel(newIterations)
+        addIteration(tc, newIterations{i}, newNames{i});
+        addedCount = addedCount + 1;
+    end
+catch originalError
+    for i = 1:addedCount
+        try
+            deleteIterations(tc, newIterations{i});
+        catch
+        end
+    end
+
+    try
+        for i = 1:numel(oldIterations)
+            addIteration(tc, oldIterations(i), oldNames{i});
+        end
+    catch rollbackError
+        error('Iteration replacement failed: %s | rollback failed: %s', ...
+            originalError.message, rollbackError.message);
+    end
+    rethrow(originalError);
+end
 end
 
 

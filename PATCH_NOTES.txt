@@ -65,3 +65,11 @@ blocking API 내부의 실제 퍼센트 진행률은 사용하지 않습니다.
 - Assessment scenario-offset v2 mapping
 - Expected update AssessmentSymbol -> Harness output mapping
 - workflow 단계별 실행 시간 표시
+
+SLDV 다중 Scenario 추가
+-----------------------
+- Targets.SldvMode = OFF / FILE / GENERATE
+- SLDV TestCase별 Signal Editor / Assessment / Test Manager Iteration 생성
+- CUT별 최장 종료 시각을 StopTime, Assessment transition, expected sample에 적용
+- 짧은 입력 Scenario는 마지막 값을 Tmax까지 유지
+- GENERATE 결과는 result/sldv/{No}_{CUTName}/latest_sldvdata.mat에 성공 시에만 교체

@@ -2,6 +2,13 @@
 
 ## v0.9.6 Candidate
 
+- Added row-level `SldvMode` (`OFF`, `FILE`, `GENERATE`) and `SldvDataFile` management columns with backward-compatible `OFF` defaults.
+- Added SLDV generation using a deep copy of the Top Model Design Verifier settings, target-specific latest-result storage, and success-only replacement of generated data files.
+- Added preflight validation for subsystem ownership, effective test cases, time vectors, Dataset interfaces, direct CUT Inports, iteration parameter metadata/application, and shared Signal Editor MAT files.
+- Added one-to-one SLDV TestCase expansion into Signal Editor scenarios, Assessment scenarios, and Test Manager table iterations named `UT_REQ_{CUTName}_{NNN}`.
+- Applied CUT-level `Tmax` to Harness StopTime, every Assessment transition, and expected-value sampling, while holding shorter Signal Editor inputs at their final values.
+- Added per-iteration SLDV parameter overrides and targeted iteration reset for existing SLDV Test Cases.
+- Added verify-run timing validation that reports missing or `Untested` active-scenario results without extending StopTime.
 - Replaced Assessment output name matching with the confirmed positional rule: Assessment Input order is Signal Editor ActiveScenario variables followed by Harness output signals.
 - Assessment Input symbols are sorted by their actual `Port`; the ActiveScenario element count is skipped and the remaining symbols are paired with Harness Outports in output order.
 - Removed exact-name matching and limited port-fallback behavior from the current Assessment workflow. Harness names remain diagnostic metadata and are never normalized or guessed.

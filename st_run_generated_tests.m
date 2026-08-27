@@ -99,6 +99,13 @@ st_log(cfg, 'DEBUG', ...
 
 fprintf('Enabled Test Case 실행 완료\n');
 
+verifyTimingResult = st_validate_sldv_verify_results(resultObj);
+if ~isempty(verifyTimingResult) && any(verifyTimingResult.Status == 'FAIL')
+    failed = verifyTimingResult(verifyTimingResult.Status == 'FAIL', :);
+    error('SLDV verify timing validation failed: %s', ...
+        char(strjoin(failed.Message, ' | ')));
+end
+
 
 %% ============================================================
 % Auto Expected Update OFF
@@ -185,6 +192,13 @@ if updatedTotal > 0 && ...
     st_log(cfg, 'DEBUG', ...
         'rerun run(tf) returned | elapsed=%.3f sec', ...
         toc(rerunTimer));
+
+    verifyTimingResult = st_validate_sldv_verify_results(resultObj);
+    if ~isempty(verifyTimingResult) && any(verifyTimingResult.Status == 'FAIL')
+        failed = verifyTimingResult(verifyTimingResult.Status == 'FAIL', :);
+        error('SLDV verify timing validation failed after rerun: %s', ...
+            char(strjoin(failed.Message, ' | ')));
+    end
 
     fprintf('재실행 완료\n');
 

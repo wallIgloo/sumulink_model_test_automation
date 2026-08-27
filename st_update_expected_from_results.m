@@ -3,7 +3,8 @@ function R = st_update_expected_from_results(resultObj)
 % Test execution 결과를 사용하여 실패한 Iteration의 verify expected value를 갱신합니다.
 %
 % 기준:
-%   cfg.ExpectedValueSampleTime 시점의 실제 Harness Outport 값
+%   OFF: cfg.ExpectedValueSampleTime 시점의 실제 Harness Outport 값
+%   FILE/GENERATE: 해당 CUT Tmax 시점의 실제 Harness Outport 값
 %
 % Assessment symbol과 Harness output 이름이 달라도,
 % Assessment Port 순서 = Scenario 변수 + Harness output 순서를 이용해
@@ -44,17 +45,8 @@ st_force_model_stopped( ...
     cfg.TopModel);
 
 
-sampleTime = ...
-    double(cfg.ExpectedValueSampleTime);
-
-
-if ~isscalar(sampleTime) || ...
-        ~isfinite(sampleTime) || ...
-        sampleTime < 0
-
-    error( ...
-        'ExpectedValueSampleTime은 0 이상의 finite scalar여야 합니다.');
-end
+[taskTargetRow, taskScenarioName, taskSampleTime] = ...
+    build_expected_update_tasks(T, cfg);
 
 
 %% ============================================================
@@ -66,7 +58,7 @@ testCaseResults = ...
         resultObj);
 
 
-n = height(T);
+n = numel(taskTargetRow);
 
 TestCaseName = strings(n,1);
 ScenarioName = strings(n,1);
@@ -83,14 +75,13 @@ Timestamp = strings(n,1);
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Expected Value Auto Update\n');
-fprintf('Sample Time : %.17g sec\n', sampleTime);
+fprintf('Sample Time : per target/scenario\n');
 fprintf('============================================\n');
 
 totalTimer = tic;
 
 st_log(cfg, 'INFO', ...
-    'Expected value update start | count=%d | sampleTime=%.17g', ...
-    n, sampleTime);
+    'Expected value update start | iteration count=%d', n);
 
 
 %% ============================================================
@@ -99,20 +90,23 @@ st_log(cfg, 'INFO', ...
 
 for i = 1:n
 
+    targetIndex = taskTargetRow(i);
+    profile = st_get_sldv_profile(T(targetIndex,:), cfg);
+    sampleTime = taskSampleTime(i);
+
     testCaseName = ...
-        char(T.TestCaseName(i));
+        char(T.TestCaseName(targetIndex));
 
     scenarioName = ...
-        st_scenario_name( ...
-            T.CUTName(i));
+        char(taskScenarioName(i));
 
     ownerPath = ...
         st_normalize_cut_path( ...
-            T.CUTPath(i), ...
+            T.CUTPath(targetIndex), ...
             cfg.TopModel);
 
     harnessName = ...
-        char(T.HarnessName(i));
+        char(T.HarnessName(targetIndex));
 
 
     TestCaseName(i) = ...
@@ -161,7 +155,8 @@ for i = 1:n
         iterResult = ...
             find_iteration_result( ...
                 tcResult, ...
-                scenarioName);
+                scenarioName, ...
+                strcmp(profile.Mode, 'OFF'));
 
 
         if isempty(iterResult)
@@ -499,18 +494,14 @@ end
 % Result Table
 %% ============================================================
 
-SampleTime = ...
-    repmat( ...
-        sampleTime, ...
-        n, ...
-        1);
+SampleTime = taskSampleTime;
 
 
 R = table( ...
-    T.No, ...
-    T.CUTName, ...
+    T.No(taskTargetRow), ...
+    T.CUTName(taskTargetRow), ...
     TestCaseName, ...
-    T.HarnessName, ...
+    T.HarnessName(taskTargetRow), ...
     ScenarioName, ...
     SampleTime, ...
     IterationOutcome, ...
@@ -557,6 +548,41 @@ st_log(cfg, 'INFO', ...
     'Expected value update complete | elapsed=%.3f sec', ...
     toc(totalTimer));
 
+end
+
+
+%% ============================================================
+% Target/scenario expansion
+%% ============================================================
+
+function [targetRows, scenarioNames, sampleTimes] = ...
+        build_expected_update_tasks(T, cfg)
+
+targetRows = zeros(0,1);
+scenarioNames = strings(0,1);
+sampleTimes = zeros(0,1);
+
+for targetIndex = 1:height(T)
+    profile = st_get_sldv_profile(T(targetIndex,:), cfg);
+    if strcmp(profile.Mode, 'OFF')
+        names = profile.ScenarioNames;
+        times = double(cfg.ExpectedValueSampleTime);
+    else
+        names = profile.ScenarioNames;
+        times = repmat(double(profile.Tmax), numel(names), 1);
+    end
+
+    if isscalar(times)
+        times = repmat(times, numel(names), 1);
+    end
+    if any(~isfinite(times)) || any(times < 0)
+        error('Expected-value sample times must be finite and nonnegative.');
+    end
+
+    targetRows = [targetRows; repmat(targetIndex, numel(names), 1)]; %#ok<AGROW>
+    scenarioNames = [scenarioNames; string(names(:))]; %#ok<AGROW>
+    sampleTimes = [sampleTimes; times(:)]; %#ok<AGROW>
+end
 end
 
 
@@ -1568,7 +1594,8 @@ end
 function iterResult = ...
     find_iteration_result( ...
         tcResult, ...
-        scenarioName)
+        scenarioName, ...
+        allowFallback)
 
 
 iterResult = [];
@@ -1612,10 +1639,10 @@ for i = 1:numel(iterations)
 end
 
 
-%% 현재 구조는 Iteration 1 하나이므로 마지막 결과 fallback
-
-iterResult = ...
-    iterations(end);
+if allowFallback
+    %% Legacy OFF mode has one iteration and retains the historical fallback.
+    iterResult = iterations(end);
+end
 
 end
 

@@ -4,7 +4,7 @@ function T = st_load_targets(onlyEnabled)
 % Required logical columns (aliases accepted):
 %   CUTName, CUTPath, HarnessName, TestCaseName
 % Optional:
-%   No, Enabled
+%   No, Enabled, SldvMode, SldvDataFile
 
 if nargin < 1
     cfg = st_config();
@@ -34,6 +34,8 @@ idxHarness = find_column(names, {'HarnessName','Harness','하네스명'});
 idxTestCase = find_column(names, {'TestCaseName','TestCase','TCName','테스트케이스명'});
 idxNo = find_column_optional(names, {'No','번호','Number','순번'});
 idxEnabled = find_column_optional(names, {'Enabled','사용','사용여부','활성','활성화'});
+idxSldvMode = find_column_optional(names, {'SldvMode','SLDVMode','SLDV Mode'});
+idxSldvDataFile = find_column_optional(names, {'SldvDataFile','SLDVDataFile','SLDV Data File'});
 
 CUTName = string(raw{:, idxCUTName});
 CUTPath = string(raw{:, idxCUTPath});
@@ -41,6 +43,18 @@ HarnessName = string(raw{:, idxHarness});
 TestCaseName = string(raw{:, idxTestCase});
 
 n = height(raw);
+SldvMode = repmat("OFF", n, 1);
+if ~isempty(idxSldvMode)
+    SldvMode = upper(strtrim(string(raw{:, idxSldvMode})));
+    SldvMode(ismissing(SldvMode) | strlength(SldvMode) == 0) = "OFF";
+end
+
+SldvDataFile = strings(n,1);
+if ~isempty(idxSldvDataFile)
+    SldvDataFile = strtrim(string(raw{:, idxSldvDataFile}));
+    SldvDataFile(ismissing(SldvDataFile)) = "";
+end
+
 No = (1:n)';
 if ~isempty(idxNo)
     temp = raw{:, idxNo};
@@ -84,8 +98,11 @@ CUTName = CUTName(keep);
 CUTPath = CUTPath(keep);
 HarnessName = HarnessName(keep);
 TestCaseName = TestCaseName(keep);
+SldvMode = SldvMode(keep);
+SldvDataFile = SldvDataFile(keep);
 
-T = table(Enabled, No, CUTName, CUTPath, HarnessName, TestCaseName);
+T = table(Enabled, No, CUTName, CUTPath, HarnessName, TestCaseName, ...
+    SldvMode, SldvDataFile);
 
 if onlyEnabled
     T = T(T.Enabled, :);
