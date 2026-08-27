@@ -12,14 +12,20 @@ function st_run_from_harness()
 %   5. Configure Test Assessment
 %   6. Create Test Manager
 %   7. Optionally run generated tests
+%
+% Progress output:
+%   Every workflow step prints START / DONE / FAILED timestamps and elapsed
+%   time. The complete workflow also prints total elapsed time.
 
 cfg = st_require_runtime_target();
 
+totalTimer = tic;
 
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Simulink Test Full Automation\n');
 fprintf('Model : %s\n', cfg.TopModel);
+fprintf('Start : %s\n', st_now_text());
 fprintf('============================================\n');
 
 
@@ -27,11 +33,11 @@ fprintf('============================================\n');
 % 1. Pre-Validate
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[1/7] Pre-Validate CUT Paths\n');
-fprintf('============================================\n');
-
-R0 = st_pre_validate_targets();
+R0 = st_execute_timed_step( ...
+    1, ...
+    7, ...
+    'Pre-Validate CUT Paths', ...
+    @() st_pre_validate_targets());
 
 if st_result_has_fail(R0)
 
@@ -45,11 +51,11 @@ end
 % 2. Harness creation
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[2/7] Create Harnesses\n');
-fprintf('============================================\n');
-
-R1 = st_create_harnesses();
+R1 = st_execute_timed_step( ...
+    2, ...
+    7, ...
+    'Create Harnesses', ...
+    @() st_create_harnesses());
 
 if st_result_has_fail(R1)
 
@@ -63,11 +69,11 @@ end
 % 3. Harness configuration
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[3/7] Configure Harnesses\n');
-fprintf('============================================\n');
-
-R2 = st_configure_harnesses();
+R2 = st_execute_timed_step( ...
+    3, ...
+    7, ...
+    'Configure Harnesses', ...
+    @() st_configure_harnesses());
 
 if st_result_has_fail(R2)
 
@@ -81,11 +87,11 @@ end
 % 4. Signal Editor
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[4/7] Configure Signal Editor\n');
-fprintf('============================================\n');
-
-R3 = st_configure_signal_editors();
+R3 = st_execute_timed_step( ...
+    4, ...
+    7, ...
+    'Configure Signal Editor', ...
+    @() st_configure_signal_editors());
 
 if st_result_has_fail(R3)
 
@@ -99,11 +105,11 @@ end
 % 5. Test Assessment
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[5/7] Configure Test Assessment\n');
-fprintf('============================================\n');
-
-R4 = st_configure_assessments();
+R4 = st_execute_timed_step( ...
+    5, ...
+    7, ...
+    'Configure Test Assessment', ...
+    @() st_configure_assessments());
 
 if st_result_has_fail(R4)
 
@@ -117,11 +123,11 @@ end
 % 6. Test Manager
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[6/7] Create Test Manager\n');
-fprintf('============================================\n');
-
-R5 = st_create_test_manager();
+R5 = st_execute_timed_step( ...
+    6, ...
+    7, ...
+    'Create Test Manager', ...
+    @() st_create_test_manager());
 
 if st_result_has_fail(R5)
 
@@ -135,25 +141,131 @@ end
 % 7. Optional test execution
 %% ============================================================
 
-fprintf('\n============================================\n');
-fprintf('[7/7] Run Generated Tests\n');
-fprintf('============================================\n');
-
 if cfg.RunGeneratedTests
 
-    st_run_generated_tests();
+    st_execute_timed_step( ...
+        7, ...
+        7, ...
+        'Run Generated Tests', ...
+        @() st_run_generated_tests());
 
 else
 
-    fprintf('cfg.RunGeneratedTests = false\n');
-    fprintf('Generated test execution skipped.\n');
+    fprintf('\n');
+    fprintf('============================================\n');
+    fprintf('[7/7] Run Generated Tests\n');
+    fprintf('SKIP  : %s\n', st_now_text());
+    fprintf('Reason: cfg.RunGeneratedTests = false\n');
+    fprintf('============================================\n');
 end
 
 
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Full Automation Complete\n');
+fprintf('End     : %s\n', st_now_text());
+fprintf('Elapsed : %s\n', st_elapsed_text(toc(totalTimer)));
 fprintf('============================================\n');
+
+end
+
+
+function R = ...
+    st_execute_timed_step( ...
+        stepNo, ...
+        stepCount, ...
+        label, ...
+        fn)
+
+fprintf('\n');
+fprintf('============================================\n');
+fprintf('[%d/%d] %s\n', ...
+    stepNo, ...
+    stepCount, ...
+    label);
+fprintf('START : %s\n', ...
+    st_now_text());
+fprintf('============================================\n');
+
+timerValue = tic;
+
+try
+
+    R = ...
+        fn();
+
+catch ME
+
+    elapsedSec = ...
+        toc(timerValue);
+
+    fprintf('\n');
+    fprintf('--------------------------------------------\n');
+    fprintf('[%d/%d] FAILED %s\n', ...
+        stepNo, ...
+        stepCount, ...
+        label);
+    fprintf('TIME    : %s\n', ...
+        st_now_text());
+    fprintf('ELAPSED : %s\n', ...
+        st_elapsed_text(elapsedSec));
+    fprintf('--------------------------------------------\n');
+
+    rethrow(ME);
+end
+
+elapsedSec = ...
+    toc(timerValue);
+
+fprintf('\n');
+fprintf('--------------------------------------------\n');
+fprintf('[%d/%d] DONE %s\n', ...
+    stepNo, ...
+    stepCount, ...
+    label);
+fprintf('TIME    : %s\n', ...
+    st_now_text());
+fprintf('ELAPSED : %s\n', ...
+    st_elapsed_text(elapsedSec));
+fprintf('--------------------------------------------\n');
+
+end
+
+
+function text = st_now_text()
+
+text = ...
+    char( ...
+        datetime( ...
+            'now', ...
+            'Format', ...
+            'yyyy-MM-dd HH:mm:ss'));
+
+end
+
+
+function text = st_elapsed_text(secondsValue)
+
+secondsValue = ...
+    max( ...
+        0, ...
+        double(secondsValue));
+
+hoursValue = ...
+    floor(secondsValue / 3600);
+
+minutesValue = ...
+    floor(mod(secondsValue, 3600) / 60);
+
+secondsPart = ...
+    mod(secondsValue, 60);
+
+text = ...
+    sprintf( ...
+        '%02d:%02d:%06.3f', ...
+        hoursValue, ...
+        minutesValue, ...
+        secondsPart);
 
 end
 

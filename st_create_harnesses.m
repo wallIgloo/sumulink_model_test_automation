@@ -3,6 +3,10 @@ function R = st_create_harnesses()
 %
 % Existing Harnesses are skipped.
 % Harness creation uses normal compile mode.
+%
+% Progress:
+%   Each target prints its start time and elapsed time. This is especially
+%   useful because sltest.harness.create can take several minutes.
 
 cfg = st_require_runtime_target();
 
@@ -17,11 +21,15 @@ ElapsedSec = zeros(n,1);
 Timestamp = strings(n,1);
 
 
+totalTimer = tic;
+
+
 fprintf('\n');
 fprintf('============================================\n');
 fprintf('Create Test Harnesses\n');
 fprintf('Model : %s\n', cfg.TopModel);
 fprintf('Count : %d\n', n);
+fprintf('Start : %s\n', st_now_text());
 fprintf('============================================\n');
 
 
@@ -38,15 +46,18 @@ for i = 1:n
     harnessName = ...
         char(T.HarnessName(i));
 
-    fprintf('\n[%d/%d] %s\n', ...
+    timerValue = tic;
+
+    fprintf('\n');
+    fprintf('--------------------------------------------\n');
+    fprintf('[%d/%d] START %s\n', ...
         i, ...
         n, ...
         cutName);
-
+    fprintf('  Time    : %s\n', st_now_text());
     fprintf('  CUT     : %s\n', ownerPath);
     fprintf('  Harness : %s\n', harnessName);
-
-    timerValue = tic;
+    fprintf('--------------------------------------------\n');
 
 
     try
@@ -90,6 +101,9 @@ for i = 1:n
             st_force_model_stopped( ...
                 cfg.TopModel);
 
+            fprintf('  -> Creating Harness... start=%s\n', ...
+                st_now_text());
+
 
             sltest.harness.create( ...
                 ownerPath, ...
@@ -106,6 +120,10 @@ for i = 1:n
                 'RebuildModelData', false, ...
                 'SaveExternally', false, ...
                 'SynchronizationMode', 'SyncOnOpenAndClose');
+
+
+            fprintf('  -> Harness create returned at %s\n', ...
+                st_now_text());
 
 
             created = ...
@@ -139,6 +157,9 @@ for i = 1:n
             fprintf('\n');
             fprintf('============================================\n');
             fprintf('Harness creation terminated by user.\n');
+            fprintf('Time    : %s\n', st_now_text());
+            fprintf('Elapsed : %s\n', ...
+                st_elapsed_text(toc(totalTimer)));
             fprintf('============================================\n');
 
             rethrow(ME);
@@ -159,6 +180,13 @@ for i = 1:n
         string(datetime( ...
             'now', ...
             'Format', 'yyyy-MM-dd HH:mm:ss'));
+
+
+    fprintf('  Finish  : %s\n', st_now_text());
+    fprintf('  Elapsed : %s\n', ...
+        st_elapsed_text(ElapsedSec(i)));
+    fprintf('  Total   : %s\n', ...
+        st_elapsed_text(toc(totalTimer)));
 end
 
 
@@ -191,10 +219,50 @@ fprintf('\n');
 fprintf('============================================\n');
 fprintf('Harness Creation Result\n');
 fprintf('============================================\n');
-fprintf('OK   : %d\n', sum(Status == 'OK'));
-fprintf('SKIP : %d\n', sum(Status == 'SKIP'));
-fprintf('FAIL : %d\n', sum(Status == 'FAIL'));
+fprintf('OK      : %d\n', sum(Status == 'OK'));
+fprintf('SKIP    : %d\n', sum(Status == 'SKIP'));
+fprintf('FAIL    : %d\n', sum(Status == 'FAIL'));
+fprintf('End     : %s\n', st_now_text());
+fprintf('Elapsed : %s\n', st_elapsed_text(toc(totalTimer)));
 fprintf('============================================\n');
+
+end
+
+
+function text = st_now_text()
+
+text = ...
+    char( ...
+        datetime( ...
+            'now', ...
+            'Format', ...
+            'yyyy-MM-dd HH:mm:ss'));
+
+end
+
+
+function text = st_elapsed_text(secondsValue)
+
+secondsValue = ...
+    max( ...
+        0, ...
+        double(secondsValue));
+
+hoursValue = ...
+    floor(secondsValue / 3600);
+
+minutesValue = ...
+    floor(mod(secondsValue, 3600) / 60);
+
+secondsPart = ...
+    mod(secondsValue, 60);
+
+text = ...
+    sprintf( ...
+        '%02d:%02d:%06.3f', ...
+        hoursValue, ...
+        minutesValue, ...
+        secondsPart);
 
 end
 

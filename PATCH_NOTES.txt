@@ -1,29 +1,31 @@
-Test Manager incremental update patch
+Execution timing patch
 
-Default:
-    cfg.OverwriteTestFile = false
+적용 파일
+- st_run_from_harness.m
+- st_run_after_harness.m
+- st_create_harnesses.m
 
-OverwriteTestFile = false
-- If the target .mldatx is already open, reuse that TestFile object.
-- If it exists but is not open, open it.
-- If it does not exist, create it.
-- Preserve existing Test Cases in cfg.TestSuiteName.
-- If TestCaseName already exists in that suite, SKIP it unchanged.
-- Create only missing Test Cases.
-- Duplicate TestCaseName rows in the same Excel input are also skipped after
-  the first one is created.
+변경 내용
+1. 전체 workflow 시작/종료 시각과 총 소요시간 표시
+2. 각 workflow 단계별 START / DONE / FAILED 시각 표시
+3. 각 workflow 단계별 elapsed 표시 (HH:MM:SS.mmm)
+4. Harness 생성은 각 CUT별 시작/종료/소요시간/누적시간 표시
+5. sltest.harness.create 호출 직전/리턴 직후 시각을 별도로 표시
 
-OverwriteTestFile = true
-- Close only the target Test File if it is already open.
-- Recreate the .mldatx file.
-- Rebuild the requested suite's Test Cases from Excel.
+예시
+[2/7] Create Harnesses
+START : 2026-08-27 09:15:10
+...
+[3/20] START CUT_X
+  -> Creating Harness... start=2026-08-27 09:17:01
+  -> Harness create returned at 2026-08-27 09:21:44
+  Finish  : 2026-08-27 09:21:45
+  Elapsed : 00:04:44.123
+  Total   : 00:06:35.812
+...
+[2/7] DONE Create Harnesses
+ELAPSED : 00:32:10.441
 
-Result additions:
-- ExistingTestCase
-- Action = CREATED / SKIP_EXISTING / FAILED
-- Status = OK / SKIP / FAIL
-
-Note:
-cfg.RunGeneratedTests = true may still run existing enabled Test Cases in the
-Test File, depending on the existing execution flow. This patch only changes
-Test Manager creation/update behavior.
+주의
+- MATLAB의 sltest.harness.create 자체가 블로킹되는 동안에는 내부 진행률을
+  안전하게 얻을 수 없어서, 호출 직전/직후 시각을 표시하는 방식입니다.
