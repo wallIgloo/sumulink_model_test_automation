@@ -1,75 +1,23 @@
-Verbose progress logging patch
+Whitespace-preserving CUT path fallback
 
-설정
-----
-st_config.m:
+Resolution policy:
+1. Preserve the Excel CUTPath exactly and check whether the Simulink block exists.
+2. If not found, apply the previous outer strtrim behavior and check again.
+3. If both fail, return the legacy-trimmed candidate so existing validation reports a normal not-found error.
 
-    cfg.VerboseLogging = true;   % 상세 로그 ON
-    cfg.VerboseLogging = false;  % 상세 로그 OFF
+Changed files:
+- st_load_targets.m
+  CUTName/CUTPath no longer lose trailing whitespace while being loaded.
+- st_normalize_cut_path.m
+  Exact path first, legacy trimmed path second.
+- st_fill_temp_paths_from_indent.m
+  Preserves actual CUTName whitespace when constructing temporary paths.
 
-VerboseLogging=false여도 기존 START / OK / FAIL / 요약 메시지는 유지됩니다.
-추가된 INFO / DEBUG / TRACE 로그만 사라집니다.
+Example:
+Actual block = 'Child '
+Excel CUTPath = 'TEST_TARGET_MODEL_NAME/Parent/Child '
+=> exact candidate wins.
 
-추가 파일
----------
-st_log.m
-
-적용 대상
----------
-- st_run_from_harness.m
-- st_run_after_harness.m
-- st_create_harnesses.m
-- st_configure_harnesses.m
-- st_configure_signal_editors.m
-- st_configure_assessments.m
-- st_create_test_manager.m
-- st_run_generated_tests.m
-- st_update_expected_from_results.m
-- st_config.m
-
-예시
-----
-[2026-08-27 09:20:01][DEBUG] [Assessment 3/20] harness.load start
-[2026-08-27 09:20:06][DEBUG] [Assessment 3/20] harness.load done
-[2026-08-27 09:20:06][DEBUG] [Assessment 3/20] Scenario input count=3 | names=[A, B, C]
-[2026-08-27 09:20:06][TRACE] [Assessment 3/20] map #1 | AssessmentPort=4 | AssessmentSymbol=AB | HarnessPort=1 | HarnessSignal=A/B
-[2026-08-27 09:20:07][DEBUG] [Assessment 3/20] build verify action start | targets=1
-
-목적
-----
-오래 걸리는 작업이 멈춘 것처럼 보일 때 마지막 로그를 보면 MATLAB이 현재
-어느 API 호출 안에 있는지 확인할 수 있습니다.
-
-예:
-    [DEBUG] harness.load start
-이후 로그가 없다면 현재 harness.load 내부에서 대기 중인 것입니다.
-
-    [DEBUG] entering sltest.harness.create
-이후 로그가 없다면 Harness create/compile 내부에서 대기 중인 것입니다.
-
-    [DEBUG] run(tf) start
-이후 로그가 없다면 Test Manager 실행 내부에서 대기 중인 것입니다.
-
-제한
-----
-sltest.harness.create(), sltest.harness.load(), run(tf) 같은 MATLAB/Simulink
-blocking API 내부의 실제 퍼센트 진행률은 사용하지 않습니다.
-따라서 하나의 blocking call이 수 분 걸리는 동안 주기적인 heartbeat가 반드시
-출력되는 구조는 아닙니다. 대신 모든 긴 호출 직전/직후에 로그를 두어
-'어디에서 오래 걸리는지'를 식별하도록 했습니다.
-
-포함된 기존 패치
----------------
-이 패치의 파일들은 이 대화에서 만든 다음 변경을 유지한 상태를 기준으로 합니다.
-- Test Manager incremental mode / OverwriteTestFile=false
-- Assessment scenario-offset v2 mapping
-- Expected update AssessmentSymbol -> Harness output mapping
-- workflow 단계별 실행 시간 표시
-
-SLDV 다중 Scenario 추가
------------------------
-- Targets.SldvMode = OFF / FILE / GENERATE
-- SLDV TestCase별 Signal Editor / Assessment / Test Manager Iteration 생성
-- CUT별 최장 종료 시각을 StopTime, Assessment transition, expected sample에 적용
-- 짧은 입력 Scenario는 마지막 값을 Tmax까지 유지
-- GENERATE 결과는 result/sldv/{No}_{CUTName}/latest_sldvdata.mat에 성공 시에만 교체
+Actual block = 'Child'
+Excel CUTPath = 'TEST_TARGET_MODEL_NAME/Parent/Child '
+=> exact candidate fails, trimmed candidate wins.
