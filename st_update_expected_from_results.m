@@ -5,6 +5,10 @@ function R = st_update_expected_from_results(resultObj)
 % 기준:
 %   cfg.ExpectedValueSampleTime 시점의 실제 Harness Outport 값
 %
+% Assessment symbol과 Harness output 이름이 달라도,
+% Assessment Port 순서 = Scenario 변수 + Harness output 순서를 이용해
+% 실제 logged Harness output으로 다시 매핑합니다.
+%
 % 대상 Action 형식:
 %   verify(A == 0);
 %   verify(A(1) == 0);
@@ -240,12 +244,56 @@ for i = 1:n
                 harnessName);
 
 
+        %% Assessment Symbol <-> Harness Output mapping
+        %
+        % Assessment Input order was confirmed as:
+        %   1) Signal Editor ActiveScenario variables
+        %   2) Harness output signals
+        %
+        % verify() uses the actual Assessment Symbol name, while logged
+        % signals keep the Harness output signal/outport name. Therefore
+        % the expected-value updater must rebuild the same positional map
+        % used by st_configure_assessments.
+
+        if cfg.VerifyHarnessOutportsOnly
+
+            assessmentSpecs = ...
+                st_collect_assessment_input_specs( ...
+                    assess);
+
+            scenarioNames = ...
+                st_collect_signal_editor_scenario_names( ...
+                    harnessName, ...
+                    cfg.TopModel);
+
+            scenarioInputCount = ...
+                numel(scenarioNames);
+
+            usableHarnessOutputs = ...
+                harnessOutputs( ...
+                    strlength(harnessOutputs.SignalName) > 0, ...
+                    :);
+
+            assessmentOutputMap = ...
+                build_assessment_output_map( ...
+                    assessmentSpecs, ...
+                    usableHarnessOutputs, ...
+                    scenarioInputCount);
+
+        else
+
+            assessmentOutputMap = ...
+                table();
+        end
+
+
         [newAction, lineCount, mismatchCount, updatedCount, notes] = ...
             update_verify_action( ...
                 char(currentAction), ...
                 outputRuns, ...
                 sampleTime, ...
-                harnessOutputs);
+                harnessOutputs, ...
+                assessmentOutputMap);
 
 
         VerifyLineCount(i) = ...
@@ -411,7 +459,8 @@ function [newAction, lineCount, mismatchCount, updatedCount, notes] = ...
         currentAction, ...
         outputRuns, ...
         sampleTime, ...
-        harnessOutputs)
+        harnessOutputs, ...
+        assessmentOutputMap)
 
 
 if isempty(currentAction)
@@ -517,7 +566,8 @@ for i = 1:numel(lines)
                 find_logged_signal( ...
                     outputRuns, ...
                     rootName, ...
-                    harnessOutputs);
+                    harnessOutputs, ...
+                    assessmentOutputMap);
 
 
             if isempty(sig)
@@ -617,26 +667,199 @@ end
 
 
 %% ============================================================
+% Assessment Symbol <-> Harness Output mapping
+%% ============================================================
+
+function M = ...
+    build_assessment_output_map( ...
+        assessmentSpecs, ...
+        harnessOutputs, ...
+        scenarioInputCount)
+% Rebuild the same mapping rule used by st_configure_assessments:
+%
+% Assessment ports:
+%   1..K       -> Signal Editor scenario variables
+%   K+1..K+N   -> Harness outputs 1..N
+%
+% The Assessment symbol name may differ from the Harness signal name
+% (for example A/B -> AB), so names are never used to establish the map.
+
+if ~ismember( ...
+        'Port', ...
+        assessmentSpecs.Properties.VariableNames)
+
+    error( ...
+        ['Assessment input specs에 Port 열이 없습니다. ' ...
+         'st_collect_assessment_input_specs.m을 최신 패치로 교체하세요.']);
+end
+
+
+scenarioInputCount = ...
+    double(scenarioInputCount);
+
+
+if ~isscalar(scenarioInputCount) || ...
+        ~isfinite(scenarioInputCount) || ...
+        scenarioInputCount < 0 || ...
+        mod(scenarioInputCount,1) ~= 0
+
+    error( ...
+        'Invalid scenario input count: %g', ...
+        scenarioInputCount);
+end
+
+
+nAssessment = ...
+    height(assessmentSpecs);
+
+nHarness = ...
+    height(harnessOutputs);
+
+
+expectedPorts = ...
+    (1:nAssessment).';
+
+actualPorts = ...
+    double(assessmentSpecs.Port);
+
+
+if ~isequal( ...
+        actualPorts, ...
+        expectedPorts)
+
+    error( ...
+        ['Assessment Input Port가 연속된 1..N 순서가 아닙니다. ' ...
+         'Actual=%s'], ...
+        mat2str(actualPorts.'));
+end
+
+
+expectedAssessmentCount = ...
+    scenarioInputCount + nHarness;
+
+
+if nAssessment ~= expectedAssessmentCount
+
+    error( ...
+        ['Expected update mapping count mismatch. ' ...
+         'Assessment=%d, Scenario=%d, HarnessOutput=%d, Expected=%d'], ...
+        nAssessment, ...
+        scenarioInputCount, ...
+        nHarness, ...
+        expectedAssessmentCount);
+end
+
+
+if nHarness == 0
+
+    M = ...
+        table();
+
+    return;
+end
+
+
+rows = ...
+    scenarioInputCount + (1:nHarness).';
+
+
+AssessmentPort = ...
+    assessmentSpecs.Port(rows);
+
+AssessmentSymbol = ...
+    assessmentSpecs.Name(rows);
+
+HarnessOutportPort = ...
+    harnessOutputs.Port;
+
+HarnessSignalName = ...
+    harnessOutputs.SignalName;
+
+HarnessOutportBlock = ...
+    harnessOutputs.OutportBlock;
+
+
+M = ...
+    table( ...
+        AssessmentPort, ...
+        AssessmentSymbol, ...
+        HarnessOutportPort, ...
+        HarnessSignalName, ...
+        HarnessOutportBlock);
+
+end
+
+
+%% ============================================================
 % Logged Signal 검색
 %% ============================================================
 
 function sig = ...
     find_logged_signal( ...
         outputRuns, ...
-        signalName, ...
-        harnessOutputs)
+        assessmentSymbol, ...
+        harnessOutputs, ...
+        assessmentOutputMap)
 
 sig = [];
 
 
-searchNames = {signalName};
+%% ============================================================
+% 1. Assessment Symbol -> actual Harness output aliases
+%% ============================================================
 
+searchNames = ...
+    {assessmentSymbol};
+
+
+if ~isempty(assessmentOutputMap)
+
+    rows = ...
+        find( ...
+            strcmp( ...
+                assessmentOutputMap.AssessmentSymbol, ...
+                assessmentSymbol));
+
+
+    if numel(rows) > 1
+
+        error( ...
+            'Assessment output mapping is ambiguous: %s', ...
+            assessmentSymbol);
+    end
+
+
+    if numel(rows) == 1
+
+        aliases = [ ...
+            assessmentOutputMap.HarnessSignalName(rows); ...
+            assessmentOutputMap.HarnessOutportBlock(rows)];
+
+        aliases = ...
+            aliases( ...
+                strlength(aliases) > 0);
+
+        aliases = ...
+            unique( ...
+                aliases, ...
+                'stable');
+
+        searchNames = [ ...
+            searchNames; ...
+            cellstr(aliases)];
+    end
+end
+
+
+%% ============================================================
+% 2. Backward-compatible raw-name alias lookup
+%% ============================================================
 
 if ~isempty(harnessOutputs)
 
     mask = ...
-        strcmp(harnessOutputs.SignalName, signalName) | ...
-        strcmp(harnessOutputs.OutportBlock, signalName);
+        strcmp(harnessOutputs.SignalName, assessmentSymbol) | ...
+        strcmp(harnessOutputs.OutportBlock, assessmentSymbol);
 
 
     if any(mask)
@@ -667,6 +890,10 @@ searchNames = ...
         'stable');
 
 
+%% ============================================================
+% 3. Search the logged output runs
+%% ============================================================
+
 for n = 1:numel(searchNames)
 
     currentName = ...
@@ -681,48 +908,47 @@ for n = 1:numel(searchNames)
                 currentName);
 
 
-    if isempty(found)
+        if isempty(found)
 
-        continue;
-    end
+            continue;
+        end
 
 
-    if numel(found) == 1
+        if numel(found) == 1
+
+            sig = ...
+                found;
+
+            return;
+        end
+
+
+        %% 동일 이름이 여러 개면 Signals domain 우선
+
+        for k = 1:numel(found)
+
+            try
+
+                if strcmp( ...
+                        char(found(k).Domain), ...
+                        'Signals')
+
+                    sig = ...
+                        found(k);
+
+                    return;
+                end
+
+            catch
+            end
+        end
+
 
         sig = ...
-            found;
+            found(1);
 
         return;
     end
-
-
-    %% 동일 이름이 여러 개면 Signals domain 우선
-
-    for k = 1:numel(found)
-
-        try
-
-            if strcmp( ...
-                    char(found(k).Domain), ...
-                    'Signals')
-
-                sig = ...
-                    found(k);
-
-                return;
-            end
-
-        catch
-        end
-    end
-
-
-    sig = ...
-        found(1);
-
-    return;
-end
-
 end
 
 end
