@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.9.6 Candidate
+
+- Replaced Assessment output name matching with the confirmed positional rule: Assessment Input order is Signal Editor ActiveScenario variables followed by Harness output signals.
+- Assessment Input symbols are sorted by their actual `Port`; the ActiveScenario element count is skipped and the remaining symbols are paired with Harness Outports in output order.
+- Removed exact-name matching and limited port-fallback behavior from the current Assessment workflow. Harness names remain diagnostic metadata and are never normalized or guessed.
+- Updated expected-value replacement to rebuild the same Assessment-symbol-to-Harness-output positional map before looking up logged signals.
+- Changed the default Test Manager mode to incremental with `cfg.OverwriteTestFile = false`.
+- Incremental Test Manager creation reuses an open target Test File, opens a closed existing file, creates a missing file, preserves existing Test Cases, and adds only missing `TestCaseName` values.
+- Full recreation closes only the target Test File instead of clearing every open Test Manager file.
+- Preserved the no-direct-Inport rule: Signal Editor configuration is skipped and `SignalEditorScenario` is omitted from the Test Manager iteration, while `TestSequenceScenario` remains assigned.
+- Added timestamped verbose checkpoints through `st_log.m`, including logs immediately before and after long-running MATLAB/Simulink calls.
+- Added workflow and per-target elapsed-time reporting.
+- Kept compile-based Harness creation with `CreateWithoutCompile = false`.
+- Documentation now treats the current code as the v0.9.6 candidate source of truth and records the remaining MATLAB R2025b runtime validation work.
+
 ## v0.9.5
 
 - Assessment output matching no longer performs or proposes slash deletion/name normalization.

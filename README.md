@@ -1,169 +1,248 @@
-# Simulink Test Automation v0.9.4
+# Simulink Test Automation v0.9.6 Candidate
 
-## v0.9.5 - preserve raw `/` names during Assessment matching
+MATLAB/Simulink Test 자동화 도구입니다. Excel에서 CUT, Harness, Test Case 정보를 읽어 Harness 구성, Signal Editor 및 Test Assessment 설정, Test Manager 생성, 테스트 실행과 expected-value 갱신까지 수행합니다.
 
-Assessment matching does not delete or replace `/` in Harness signal names or Outport block names. Matching is performed in this order:
+현재 `main`의 코드를 기준으로 한 v0.9.6 candidate 문서입니다. 아래 동작은 코드 정적 검토와 생성된 Harness의 Assessment 입력 순서 확인을 반영하지만, 전체 workflow는 실제 MATLAB R2025b 환경에서 다시 검증해야 합니다.
 
-```text
-1. Exact raw-name match
-2. If names differ, port-order fallback only when Harness Outport count
-   equals Assessment Input symbol count
-3. Otherwise FAIL with both raw Harness names and actual Assessment symbols
-```
+## Requirements
 
-The verify action always uses the actual Test Assessment symbol name returned by `sltest.testsequence.findSymbol`. The original Harness name is kept only for mapping/diagnostics.
+- MATLAB / Simulink / Simulink Test R2025b
+- 원본 모델은 R2024a에서 작성되었을 수 있습니다.
+- `TestManagement.xlsx`의 `Targets` Sheet
 
-`AssessmentResult.PortOrderFallbackCount` shows how many outputs required the safe port-order fallback. A value of `0` means every target matched by exact raw name.
+`Targets`의 필수 열:
 
+- `CUTName`
+- `CUTPath`
+- `HarnessName`
+- `TestCaseName`
 
-## v0.9.4 - Test Manager input-scenario guard
+선택 열:
 
-`st_configure_signal_editors` intentionally skips Signal Editor scenario configuration when the CUT has no direct Inport. Test Manager now follows the same rule.
+- `No`
+- `Enabled`
 
-For a CUT with a direct Inport, `Iteration 1` contains both:
+모든 CUT는 한 번의 실행에서 선택한 동일한 Top Model을 사용합니다. `ModelName` 열은 추가하지 않습니다.
 
-```text
-SignalEditorScenario = UT_REQ_{CUTName}_001
-TestSequenceScenario = UT_REQ_{CUTName}_001
-```
+## Recommended workflow
 
-For a CUT with no direct Inport, `Iteration 1` contains only:
-
-```text
-TestSequenceScenario = UT_REQ_{CUTName}_001
-```
-
-`SignalEditorScenario` is not assigned, preventing execution from requesting a Signal Editor scenario that was never created/renamed for that CUT. `TestManagerResult` records `HasDirectInport` and `SignalEditorScenarioApplied`.
-
-
-## v0.9.3 - exhaustive subsystem inventory
-
-`st_export_subsystem_paths` now intentionally searches as broadly as possible for manual path selection. The inventory includes Subsystems under masks, inside library links, inside Subsystem References, inside recursively referenced models, inactive variant choices, and commented blocks.
-
-Referenced-model internals can therefore appear with a `FullPath` rooted at that referenced model. A new `SourceModel` column makes the owning block diagram explicit. The inventory is intentionally permissive; copy only the desired `FullPath` into `Targets.CUTPath`, then use `st_pre_validate_targets` to reject paths that are not valid for the selected test workflow.
-
-
-## Excel access diagnostic
-
-If the company-managed Excel environment blocks one workbook-opening path but another Python/xlwings path works, run the diagnostic before changing the project Excel I/O implementation.
-
-### From MATLAB
-
-Safe read-only test:
-
-```matlab
-st_setup
-st_diagnose_excel_access
-```
-
-The diagnostic compares these methods against `cfg.ManagementExcel`:
-
-```text
-app.books.open(..., read_only=True)
-app.api.Workbooks.Open(..., ReadOnly=True)
-xw.Book(path, read_only=True)
-xw.Book(path, mode='r')
-```
-
-The result is printed in MATLAB and also saved to:
-
-```text
-result/ExcelAccessDiagnostic.json
-```
-
-To additionally test whether the original workbook can be opened read-write without saving, and whether Excel can create/save a disposable workbook in the same directory:
-
-```matlab
-st_diagnose_excel_access(true)
-```
-
-The original `TestManagement.xlsx` is not modified by the diagnostic. The disposable write-probe workbook is deleted after the check.
-
-If MATLAB cannot determine the intended Python executable, pass it explicitly:
-
-```matlab
-st_diagnose_excel_access(false, 'C:\Python311\python.exe')
-```
-
-### Directly from Python
-
-```text
-python excel_open_diagnostic.py TestManagement.xlsx
-```
-
-Optional write probe:
-
-```text
-python excel_open_diagnostic.py TestManagement.xlsx --write-probe
-```
-
-After running it on the company PC, the method that reports `OK` should be used for the Excel bridge. In particular, `mode='r'` is a different mechanism from the normal interactive Excel automation path and may require the appropriate xlwings feature/license.
-
-## Recommended path workflow
-
-### 1. Select the target model
+MATLAB에서 이 폴더를 Current Folder로 연 뒤 실행합니다.
 
 ```matlab
 st_setup
 st_select_target_model
 ```
 
-### 2. Build temporary CUTPath values from Excel indentation
-
-`Targets.CUTName` may already be visually hierarchical using Excel native cell indentation.
-
-```text
-A
-    B
-    C
-        D
-    E
-```
-
-Run:
+Excel의 native indentation으로 임시 CUTPath를 만들려면:
 
 ```matlab
 st_fill_temp_paths_from_indent
 ```
 
-Generated one-line paths:
-
-```text
-TEST_TARGET_MODEL_NAME/A
-TEST_TARGET_MODEL_NAME/A/B
-TEST_TARGET_MODEL_NAME/A/C
-TEST_TARGET_MODEL_NAME/A/C/D
-TEST_TARGET_MODEL_NAME/A/E
-```
-
-The helper reads the actual Excel `IndentLevel` property. It does not parse leading spaces and does not use a numeric Depth column.
-
-### 3. Export the actual model hierarchy when manual correction is needed
+실제 모델 계층을 내보내 수동으로 경로를 보정하려면:
 
 ```matlab
 st_export_subsystem_paths
 ```
 
-Use `ModelSubsystems.FullPath` to correct any temporary path in `Targets.CUTPath`.
-
-### 4. Validate and run
+`ModelSubsystems.FullPath`에서 필요한 경로만 `Targets.CUTPath`로 복사한 뒤 검증합니다.
 
 ```matlab
 st_pre_validate_targets
+```
+
+Harness 생성부터 전체 workflow를 실행하려면:
+
+```matlab
 st_run_from_harness
 ```
 
-If Harnesses already exist:
+Harness가 이미 존재하면:
 
 ```matlab
 st_run_after_harness
 ```
 
-## Default test behavior
+`st_find_target_paths`는 모델을 선택하고 같은 이름의 Subsystem 후보를 주변의 확정된 경로와 Excel 행 문맥으로 순위화하여 `CUTPath`를 채우는 대체 workflow입니다.
+
+## Full workflow
+
+`st_run_from_harness`는 다음 순서로 실행합니다.
+
+1. CUTPath 사전 검증
+2. 누락된 Harness 생성
+3. Harness StopTime 설정
+4. Signal Editor 설정
+5. Test Assessment 설정
+6. Test Manager 생성 또는 증분 갱신
+7. 설정에 따른 Test 실행 및 expected-value 갱신
+
+`st_run_after_harness`는 기존 Harness 존재 여부를 검증한 뒤 3번부터 실행합니다.
+
+각 단계는 결과를 `result` 폴더에 CSV로 기록하고, 가능한 경우 `TestManagement.xlsx`의 결과 Sheet에도 기록합니다.
+
+## Harness creation
+
+기존 Harness는 보존하고 없는 Harness만 생성합니다. 주요 생성 설정은 다음과 같습니다.
+
+```text
+Source               = Signal Editor
+Sink                 = Outport
+SchedulerBlock       = Test Sequence
+SeparateAssessment   = true
+CreateWithoutCompile = false
+VerificationMode     = Normal
+SaveExternally       = false
+SynchronizationMode  = SyncOnOpenAndClose
+```
+
+Harness 생성은 compile을 포함하므로 수 분이 걸릴 수 있습니다. `SynchronizationMode` warning만 발생했더라도 Harness가 실제로 생성되었다면 생성 실패로 간주하지 않습니다.
+
+## Signal Editor rule
+
+direct CUT Inport가 있으면 Signal Editor의 SampleTime을 설정하고 첫 Scenario를 다음 이름으로 변경하여 활성화합니다.
+
+```text
+UT_REQ_{CUTName}_001
+```
+
+입력값과 waveform은 변경하지 않습니다.
+
+direct CUT Inport가 없으면 Signal Editor 설정을 `SKIP_NO_INPORT`로 건너뜁니다. 이 규칙은 Assessment 입력 매핑 규칙과 별개입니다.
+
+## Assessment output mapping
+
+Harness에서 확인된 Test Assessment Input 순서는 다음과 같습니다.
+
+```text
+Signal Editor ActiveScenario variables
++ Harness output signals
+```
+
+Active Scenario 요소 수가 `K`이면:
+
+```text
+Assessment Port 1..K      -> Scenario input area
+Assessment Port K+1..end  -> Harness output area
+```
+
+자동화는 다음 순서로 verify 대상을 결정합니다.
+
+1. 실제 Assessment Input symbol과 Port를 읽습니다.
+2. 실제 Assessment Port 순서로 정렬합니다.
+3. Signal Editor ActiveScenario 요소 수를 읽습니다.
+4. 처음 `K`개 Assessment symbol을 건너뜁니다.
+5. 나머지 symbol을 Harness Outport 순서와 위치로 연결합니다.
+6. 실제 Assessment symbol 이름으로 `verify(...)`를 생성합니다.
+
+Harness signal 이름과 Assessment symbol 이름은 매핑 기준이 아닙니다. `/` 삭제, `makeValidName` 또는 그 밖의 추측 기반 정규화를 사용하지 않습니다.
+
+예를 들어 Harness signal이 `A/B`, 실제 Assessment symbol이 `AB`여도 순서로 관계를 확정하고 다음 형태를 생성할 수 있습니다.
 
 ```matlab
-cfg.OverwriteTestFile = true;
+verify(AB == 0);
+```
+
+기본 설정은 Harness의 최상위 Outport에 대응하는 Assessment Input만 검증합니다. 스칼라, numeric array, Bus, nested Bus를 지원하며 Bus 배열은 기본적으로 첫 Bus instance만 검증합니다. Bus leaf의 numeric array는 전체 요소를 검증합니다.
+
+Assessment Scenario는 하나의 Scenario와 두 Step으로 정리됩니다.
+
+```text
+step1 --true--> step2
+step2 action: generated verify(...)
+```
+
+`cfg.VerifyAtSampleTimeOnly = true`이면 transition은 `after(ExpectedValueSampleTime, sec)` 형태가 됩니다.
+
+## Test Manager incremental behavior
+
+기본값은 다음과 같습니다.
+
+```matlab
+cfg.OverwriteTestFile = false;
+```
+
+증분 모드에서는:
+
+- 이미 열린 대상 Test File을 재사용합니다.
+- 닫혀 있는 기존 `.mldatx`를 엽니다.
+- 파일이 없으면 새로 만듭니다.
+- 기존 Test Case를 보존합니다.
+- 같은 `TestCaseName`이 있으면 `SKIP_EXISTING`으로 기록합니다.
+- 없는 Test Case만 추가합니다.
+
+`cfg.OverwriteTestFile = true`이면 대상 Test File만 닫고 다시 생성합니다. 다른 열린 Test Manager 파일을 전역으로 제거하지 않습니다.
+
+Test File, Test Suite, Test Case에 coverage recording을 활성화합니다.
+
+direct Inport가 있는 CUT의 `Iteration 1`:
+
+```text
+SignalEditorScenario = UT_REQ_{CUTName}_001
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+direct Inport가 없는 CUT의 `Iteration 1`:
+
+```text
+SignalEditorScenario is not assigned
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+## Test execution and expected-value update
+
+기본 실행 설정:
+
+```matlab
 cfg.RunGeneratedTests = true;
 cfg.AutoUpdateExpectedOnFail = true;
+cfg.ExpectedValueSampleTime = 0.01;
 cfg.RerunAfterExpectedUpdate = true;
 ```
+
+expected-value updater는 Failed Iteration만 처리합니다. Assessment의 `verify(...)` 왼쪽 symbol을 Assessment Port와 Scenario offset을 사용해 원래 Harness SignalName/OutportBlock에 연결하고, 지정 시점의 logged 실제값으로 RHS를 갱신합니다.
+
+```text
+Assessment symbol
+-> positional Assessment/Harness mapping
+-> Harness SignalName / OutportBlock
+-> logged signal
+```
+
+실제값과 RHS가 다를 때만 수정하며 지원 값은 real numeric scalar와 logical scalar입니다. 하나 이상의 값이 갱신되고 `RerunAfterExpectedUpdate`가 true이면 Test File을 다시 실행합니다.
+
+## Progress logging
+
+```matlab
+cfg.VerboseLogging = true;
+```
+
+`st_log.m`은 장시간 호출 전후에 timestamp가 포함된 `INFO`, `DEBUG`, `TRACE`, `WARN`, `ERROR` 로그를 남깁니다. `VerboseLogging = false`이면 추가 INFO/DEBUG/TRACE 로그만 숨기고 기존 START/OK/FAIL/summary 출력은 유지합니다.
+
+`sltest.harness.create`, `sltest.harness.load`, `run(tf)` 같은 blocking API 내부의 실제 percentage는 표시하지 않습니다. 마지막으로 출력된 호출 직전 로그를 통해 현재 대기 중인 위치를 확인합니다.
+
+## Excel access diagnostic
+
+회사 관리 환경에서 Excel 열기가 실패하면 원본 workbook을 수정하지 않는 read-only 진단을 실행할 수 있습니다.
+
+```matlab
+st_diagnose_excel_access
+```
+
+read-write open과 disposable workbook 저장까지 확인하려면:
+
+```matlab
+st_diagnose_excel_access(true)
+```
+
+결과는 `result/ExcelAccessDiagnostic.json`에 기록됩니다. 진단 결과 없이 프로젝트의 Excel I/O 방식을 임의로 교체하지 않습니다.
+
+## Validation status
+
+`Scenario variables -> Harness outputs` 순서는 생성된 Harness에서 수동 확인되었습니다. 다음 항목은 실제 MATLAB R2025b 장비에서 end-to-end로 다시 검증해야 합니다.
+
+- Assessment 생성 및 실행
+- Failed Test expected-value 갱신
+- 증분 Test Manager 동작
+- verbose logging 출력
+- expected-value 갱신 후 재실행

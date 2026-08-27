@@ -1,65 +1,232 @@
-## Test Manager no-input rule
-
-`st_configure_signal_editors` still skips CUTs that have no direct Inport. `st_create_test_manager` now mirrors that decision: it assigns `SignalEditorScenario` only when a direct CUT Inport exists. `TestSequenceScenario` is always assigned because the Assessment scenario remains required. `TestManagerResult` includes `HasDirectInport` and `SignalEditorScenarioApplied`.
-
-## Exhaustive inventory rule
-
-`st_export_subsystem_paths` is a discovery list, not a validity filter. It now includes linked-library internals, Subsystem Reference internals, recursively referenced-model internals, inactive variants, masked subsystems, and commented blocks. `SourceModel` identifies the owning block diagram. The user chooses the desired `FullPath`; `st_pre_validate_targets` remains the gate before harness creation.
-
 # Simulink Test Automation - Work Handoff
 
-## Current baseline: v0.9.4
+## Repository baseline
 
-The v0.9.1 Simulink/Test workflow is preserved. v0.9.2 adds a diagnostic layer for company-managed Excel environments where one Excel automation path may fail while another xlwings path succeeds. v0.9.3 broadens subsystem inventory discovery. v0.9.4 prevents Test Manager from assigning a nonexistent Signal Editor scenario to CUTs with no direct Inport.
+Repository:
+`https://github.com/wallIgloo/sumulink_model_test_automation`
 
-## Excel diagnostic
+v0.9.6 candidate baseline:
+`1b96b924b4f8f30bddb77a9da5c1b6c3a27c3145` (`add log`)
 
-Run:
+`VERSION.txt` now identifies the documentation candidate as `0.9.6`. Treat current code as the source of truth. Do not restore behavior from older README, CHANGELOG, release notes, or archived handoff material.
 
-```matlab
-st_diagnose_excel_access
-```
+## Current workflow
 
-Safe read-only methods tested:
+`st_run_from_harness` performs:
 
-1. `app.books.open(..., read_only=True)`
-2. `app.api.Workbooks.Open(..., ReadOnly=True)`
-3. `xw.Book(path, read_only=True)`
-4. `xw.Book(path, mode='r')`
+1. CUT path pre-validation
+2. Missing Harness creation
+3. Harness configuration
+4. Signal Editor configuration
+5. Test Assessment configuration
+6. Test Manager creation or incremental extension
+7. Optional test execution and expected-value update
 
-Optional:
+`st_run_after_harness` validates existing CUT/Harness mappings and starts from Harness configuration.
 
-```matlab
-st_diagnose_excel_access(true)
-```
+Both entry points report stage START/DONE/FAILED timestamps and elapsed time.
 
-This additionally tests read-write opening without saving and creates/deletes a disposable workbook in the target directory. The original management workbook is not modified.
+## Assessment mapping rule
 
-The machine-readable report is:
+Confirmed from generated Harness inspection:
 
 ```text
-result/ExcelAccessDiagnostic.json
+Test Assessment Input order
+= Signal Editor ActiveScenario variables
++ Harness output signals
 ```
 
-Do not replace all Excel I/O with a guessed method before running this diagnostic on the company PC. Use the successful method as the basis for the next Excel bridge revision.
+If the active Scenario has `K` elements:
 
-## Path workflow
+```text
+Assessment Port 1..K      -> Scenario input area
+Assessment Port K+1..end  -> Harness output area
+```
 
-1. `st_select_target_model`
-2. `st_fill_temp_paths_from_indent`
-3. `st_export_subsystem_paths` when manual correction is needed
-4. `st_pre_validate_targets`
-5. `st_run_from_harness` or `st_run_after_harness`
+Implementation rule:
 
-## Test defaults
+1. Read Assessment Input symbols and their actual Ports.
+2. Sort symbols by actual Assessment input `Port`.
+3. Read the active Signal Editor Scenario element count.
+4. Skip the first `K` Assessment symbols.
+5. Match the remaining symbols to Harness outputs in Outport order.
+6. Generate `verify(...)` using the actual Assessment symbol name.
+
+Signal names are diagnostics only. Do not delete `/`, call `makeValidName`, or introduce any guessed name normalization.
+
+Example:
+
+```text
+Harness signal : A/B
+Assessment     : AB
+```
+
+The relationship is established by position, not text transformation.
+
+## Expected-value update rule
+
+`st_update_expected_from_results` rebuilds the same positional map used during Assessment generation.
+
+```text
+Assessment symbol
+-> positional Assessment/Harness mapping
+-> Harness SignalName / OutportBlock
+-> logged signal
+```
+
+A verify expression may contain:
 
 ```matlab
-cfg.OverwriteTestFile = true;
-cfg.RunGeneratedTests = true;
-cfg.AutoUpdateExpectedOnFail = true;
-cfg.RerunAfterExpectedUpdate = true;
+verify(AB == 0);
 ```
 
-## Assessment raw-name rule (v0.9.5)
+while the logged Harness signal is still `A/B`. Do not revert to lookup by the verify LHS root name alone.
 
-Do not strip `/` or normalize Harness signal/Outport names for Assessment matching. `st_configure_assessments` uses exact raw-name matching first. If generated Assessment symbol names differ, it may use port order only when Harness Outport count equals Assessment Input symbol count. Unsafe or ambiguous cases fail with diagnostics instead of rewriting names. `PortOrderFallbackCount` is written to `AssessmentResult`.
+Only Failed Iterations are updated. Supported replacement values are real numeric scalar and logical scalar. If at least one RHS changes and `cfg.RerunAfterExpectedUpdate` is true, the Test File is run again.
+
+## Signal Editor no-direct-Inport rule
+
+Keep the existing rule unless explicitly redesigned:
+
+```text
+direct CUT Inport exists -> configure and rename Signal Editor scenario
+no direct CUT Inport     -> SKIP_NO_INPORT
+```
+
+This rule is separate from Assessment mapping. Scenario input count for Assessment mapping is read from the active Signal Editor data rather than inferred from direct CUT Inports.
+
+## Test Manager rules
+
+Current default:
+
+```matlab
+cfg.OverwriteTestFile = false;
+```
+
+Incremental behavior:
+
+```text
+open target .mldatx     -> reuse open TestFile
+closed existing .mldatx -> open existing file
+missing .mldatx         -> create file
+existing TestCaseName   -> preserve + SKIP_EXISTING
+missing TestCaseName    -> create only missing Test Case
+```
+
+With `cfg.OverwriteTestFile = true`, close only the target Test File and recreate it. Do not globally clear Test Manager files.
+
+Coverage recording is enabled at Test File, Test Suite, and Test Case levels.
+
+Direct Inport exists:
+
+```text
+SignalEditorScenario = UT_REQ_{CUTName}_001
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+No direct Inport:
+
+```text
+SignalEditorScenario is not assigned
+TestSequenceScenario = UT_REQ_{CUTName}_001
+```
+
+## Harness creation
+
+Harness creation remains compile-based:
+
+```matlab
+'CreateWithoutCompile', false
+```
+
+Key settings are Signal Editor source, Outport sink, Test Sequence scheduler, separate Assessment, Normal verification mode, internal Harness storage, and `SyncOnOpenAndClose` synchronization.
+
+A SynchronizationMode warning alone is not a Harness creation failure when the Harness is actually created.
+
+## Assessment generation options
+
+Current defaults:
+
+```matlab
+cfg.VerifyHarnessOutportsOnly = true;
+cfg.VerifyFirstBusElementOnly = true;
+cfg.VerifyAtSampleTimeOnly = false;
+```
+
+The verify builder supports scalar, numeric array, Bus, and nested Bus expressions. When first-Bus-element mode is enabled, repeated Bus instances are reduced to the first instance while numeric arrays inside Bus leaves are still fully verified.
+
+## Execution and logging defaults
+
+```matlab
+cfg.RunGeneratedTests = true;
+cfg.AutoUpdateExpectedOnFail = true;
+cfg.ExpectedValueSampleTime = 0.01;
+cfg.RerunAfterExpectedUpdate = true;
+cfg.VerboseLogging = true;
+```
+
+`st_log.m` supplies timestamped `INFO`, `DEBUG`, `TRACE`, `WARN`, and `ERROR` messages. With `VerboseLogging = false`, extra INFO/DEBUG/TRACE logs are suppressed while normal START/OK/FAIL/summary output remains.
+
+Long blocking calls such as `sltest.harness.create`, `sltest.harness.load`, and `run(tf)` log immediately before and after the call. The code does not claim percentage progress from inside those APIs.
+
+## Excel and model rules
+
+Sheet: `Targets`
+
+Required columns:
+
+- `CUTName`
+- `CUTPath`
+- `HarnessName`
+- `TestCaseName`
+
+Optional columns:
+
+- `No`
+- `Enabled`
+
+Do not add a `ModelName` column. One selected runtime model is shared by all target rows.
+
+`st_export_subsystem_paths` is a broad discovery inventory. It can include masks, library links, Subsystem References, recursively referenced models, inactive variants, and commented blocks. `SourceModel` identifies the owning block diagram. Human selection plus `st_pre_validate_targets` remains the validity gate.
+
+## Documentation and style rules
+
+- Use `TEST_TARGET_MODEL_NAME` in all generic examples.
+- Never expose a historical real target model name.
+- Prefer single-quote char syntax in MATLAB examples and generated MATLAB code.
+- Code takes precedence if documentation becomes stale again.
+
+## Environment and validation status
+
+- MATLAB / Simulink R2025b
+- Source model may originate from R2024a
+- Harness create/update calls can take several minutes
+
+The ordering `Scenario variables -> Harness outputs` was manually confirmed from generated Harnesses. Do not claim complete runtime validation until the following have run successfully on the real MATLAB machine:
+
+- end-to-end Assessment generation
+- failed-test expected-value update
+- incremental Test Manager behavior
+- verbose logging output
+- rerun after expected-value update
+
+## High-priority files
+
+```text
+st_config.m
+st_log.m
+st_run_from_harness.m
+st_run_after_harness.m
+st_create_harnesses.m
+st_configure_harnesses.m
+st_configure_signal_editors.m
+st_collect_assessment_input_specs.m
+st_collect_signal_editor_scenario_names.m
+st_collect_harness_output_signals.m
+st_configure_assessments.m
+st_build_verify_action.m
+st_prepare_assessment_scenario.m
+st_create_test_manager.m
+st_run_generated_tests.m
+st_update_expected_from_results.m
+```
