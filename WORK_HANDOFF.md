@@ -85,16 +85,16 @@ while the logged Harness signal is still `A/B`. Do not revert to lookup by the v
 
 Only Failed Iterations are updated. Supported replacement values are real numeric scalar and logical scalar. If at least one RHS changes and `cfg.RerunAfterExpectedUpdate` is true, the Test File is run again.
 
-## Signal Editor no-direct-Inport rule
+## Signal Editor direct-Inport rule
 
-Keep the existing rule unless explicitly redesigned:
+`OFF` mode keeps the legacy rule:
 
 ```text
 direct CUT Inport exists -> configure and rename Signal Editor scenario
 no direct CUT Inport     -> SKIP_NO_INPORT
 ```
 
-This rule is separate from Assessment mapping. Scenario input count for Assessment mapping is read from the active Signal Editor data rather than inferred from direct CUT Inports.
+For SLDV `FILE`/`GENERATE`, direct CUT Inports are not an execution gate. The nonempty Harness Signal Editor `ActiveScenario` is the input template; SLDV-provided elements replace matching template elements and external Harness-only elements are preserved. Scenario input count for Assessment mapping is read from the active Signal Editor data rather than inferred from direct CUT Inports.
 
 ## Test Manager rules
 
@@ -118,19 +118,21 @@ With `cfg.OverwriteTestFile = true`, close only the target Test File and recreat
 
 Coverage recording is enabled at Test File, Test Suite, and Test Case levels.
 
-Direct Inport exists:
+`OFF` mode, direct Inport exists:
 
 ```text
 SignalEditorScenario = UT_REQ_{CUTName}_001
 TestSequenceScenario = UT_REQ_{CUTName}_001
 ```
 
-No direct Inport:
+`OFF` mode, no direct Inport:
 
 ```text
 SignalEditorScenario is not assigned
 TestSequenceScenario = UT_REQ_{CUTName}_001
 ```
+
+For SLDV `FILE`/`GENERATE`, every iteration always assigns both parameters to the same `UT_REQ_{CUTName}_{NNN}` scenario.
 
 ## Harness creation
 

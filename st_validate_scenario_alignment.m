@@ -25,6 +25,8 @@ ExpectedScenarioCount = zeros(n,1);
 SignalEditorScenarioCount = zeros(n,1);
 AssessmentScenarioCount = zeros(n,1);
 TestManagerIterationCount = zeros(n,1);
+SignalEditorScenarioParameterCount = zeros(n,1);
+TestSequenceScenarioParameterCount = zeros(n,1);
 
 ExpectedScenarios = strings(n,1);
 SignalEditorScenarios = strings(n,1);
@@ -274,6 +276,12 @@ for i = 1:n
             iterationNames, ...
             'Test Manager iterations');
 
+        [SignalEditorScenarioParameterCount(i), ...
+         TestSequenceScenarioParameterCount(i)] = ...
+            assert_iteration_scenario_parameters( ...
+                iterations, ...
+                expected);
+
 
         %% ====================================================
         % Result
@@ -348,6 +356,8 @@ R = table( ...
     SignalEditorScenarioCount, ...
     AssessmentScenarioCount, ...
     TestManagerIterationCount, ...
+    SignalEditorScenarioParameterCount, ...
+    TestSequenceScenarioParameterCount, ...
     ExpectedScenarios, ...
     SignalEditorScenarios, ...
     AssessmentScenarios, ...
@@ -366,6 +376,8 @@ R = table( ...
         'SignalEditorScenarioCount', ...
         'AssessmentScenarioCount', ...
         'TestManagerIterationCount', ...
+        'SignalEditorScenarioParameterCount', ...
+        'TestSequenceScenarioParameterCount', ...
         'ExpectedScenarios', ...
         'SignalEditorScenarios', ...
         'AssessmentScenarios', ...
@@ -392,6 +404,122 @@ fprintf('============================================\n');
 st_log(cfg, 'INFO', ...
     'Scenario alignment validation complete | elapsed=%.3f sec', ...
     toc(totalTimer));
+
+end
+
+
+function [signalEditorCount, testSequenceCount] = ...
+        assert_iteration_scenario_parameters(iterations, expected)
+%ASSERT_ITERATION_SCENARIO_PARAMETERS
+% Every SLDV iteration must bind both scenario consumers to its own name.
+
+signalEditorCount = 0;
+testSequenceCount = 0;
+expected = normalize_cellstr(expected);
+
+for i = 1:numel(iterations)
+    scenarioName = char(iterations(i).Name);
+
+    if ~ismember(scenarioName, expected)
+        error( ...
+            'Iteration has an unexpected name: %s', ...
+            scenarioName);
+    end
+
+    testParams = iterations(i).TestParams;
+
+    if ~test_param_matches_scenario( ...
+            testParams, ...
+            'SignalEditorScenario', ...
+            scenarioName)
+        error( ...
+            ['Test Manager Iteration %s does not bind ' ...
+             'SignalEditorScenario to the same scenario. TestParams=%s'], ...
+            scenarioName, ...
+            test_params_to_text(testParams));
+    end
+
+    if ~test_param_matches_scenario( ...
+            testParams, ...
+            'TestSequenceScenario', ...
+            scenarioName)
+        error( ...
+            ['Test Manager Iteration %s does not bind ' ...
+             'TestSequenceScenario to the same scenario. TestParams=%s'], ...
+            scenarioName, ...
+            test_params_to_text(testParams));
+    end
+
+    signalEditorCount = signalEditorCount + 1;
+    testSequenceCount = testSequenceCount + 1;
+end
+
+end
+
+
+function tf = test_param_matches_scenario(testParams, parameterName, scenarioName)
+
+entries = test_params_to_entries(testParams);
+tf = false;
+
+for i = 1:numel(entries)
+    if ~contains(entries{i}, parameterName)
+        continue;
+    end
+
+    if contains(entries{i}, scenarioName)
+        tf = true;
+        return;
+    end
+
+    % Some releases expose TestParams as adjacent name/value cell entries.
+    if i < numel(entries) && contains(entries{i + 1}, scenarioName)
+        tf = true;
+        return;
+    end
+end
+
+end
+
+
+function entries = test_params_to_entries(value)
+
+if isempty(value)
+    entries = {};
+elseif iscell(value)
+    entries = cell(numel(value), 1);
+    for i = 1:numel(value)
+        entries{i} = test_params_to_text(value{i});
+    end
+else
+    entries = {test_params_to_text(value)};
+end
+
+end
+
+
+function text = test_params_to_text(value)
+
+if isempty(value)
+    text = '';
+elseif iscell(value)
+    parts = cellfun(@test_params_to_text, value(:), ...
+        'UniformOutput', false);
+    text = strjoin(parts, ' | ');
+elseif isstruct(value)
+    fields = fieldnames(value);
+    parts = cell(1, numel(fields));
+    for i = 1:numel(fields)
+        parts{i} = [fields{i} '=' test_params_to_text(value.(fields{i}))];
+    end
+    text = strjoin(parts, ', ');
+else
+    try
+        text = char(string(value));
+    catch
+        text = class(value);
+    end
+end
 
 end
 

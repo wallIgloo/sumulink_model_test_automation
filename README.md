@@ -103,7 +103,7 @@ Harness 생성은 compile을 포함하므로 수 분이 걸릴 수 있습니다.
 
 ## Signal Editor rule
 
-direct CUT Inport가 있으면 Signal Editor의 SampleTime을 설정하고 첫 Scenario를 다음 이름으로 변경하여 활성화합니다.
+`OFF` 모드에서 direct CUT Inport가 있으면 Signal Editor의 SampleTime을 설정하고 첫 Scenario를 다음 이름으로 변경하여 활성화합니다.
 
 ```text
 UT_REQ_{CUTName}_001
@@ -111,7 +111,7 @@ UT_REQ_{CUTName}_001
 
 입력값과 waveform은 변경하지 않습니다.
 
-`OFF` 모드에서 direct CUT Inport가 없으면 Signal Editor 설정을 `SKIP_NO_INPORT`로 건너뜁니다. SLDV 모드는 direct Inport 연결을 전제로 하므로 같은 경우를 실패 처리합니다. 이 규칙은 Assessment 입력 매핑 규칙과 별개입니다.
+`OFF` 모드에서 direct CUT Inport가 없으면 Signal Editor 설정을 `SKIP_NO_INPORT`로 건너뜁니다. `FILE`/`GENERATE` SLDV 모드는 direct CUT Inport가 없어도 nonempty Harness `ActiveScenario`가 있으면 진행합니다. 이 규칙은 Assessment 입력 매핑 규칙과 별개입니다.
 
 ## SLDV scenario workflow
 
@@ -121,7 +121,7 @@ UT_REQ_{CUTName}_001
 result/sldv/{No}_{CUTName}/latest_sldvdata.mat
 ```
 
-SLDV 데이터의 subsystem 경로, 유효한 TestCase, 시간값, Dataset 인터페이스, CUT 직접 Inport 및 Iteration에 적용할 파라미터 metadata를 실제 Harness 변경 전에 검증합니다. 파라미터 source가 반환되면 그대로 사용하고, 생략된 경우에는 Test Manager의 기본 source 해석을 사용합니다. 모든 입력의 `dataNoEffect`가 true인 TestCase는 제외합니다. SLDV Signal Editor MAT 파일을 다른 Harness가 공유하면 변경하지 않고 실패합니다.
+SLDV 데이터의 subsystem 경로, 유효한 TestCase, 시간값, Dataset 인터페이스 및 Iteration에 적용할 파라미터 metadata를 실제 Harness 변경 전에 검증합니다. SLDV 입력은 Harness `ActiveScenario` 입력의 부분집합이어야 하며, 공통 신호의 자료형·차원이 일치해야 합니다. Harness에만 있는 외부 입력은 원래 시나리오 값으로 유지하고, Harness에 없는 SLDV 신호는 실패 처리합니다. 파라미터 source가 반환되면 그대로 사용하고, 생략된 경우에는 Test Manager의 기본 source 해석을 사용합니다. 모든 입력의 `dataNoEffect`가 true인 TestCase는 제외합니다. SLDV Signal Editor MAT 파일을 다른 Harness가 공유하면 변경하지 않고 실패합니다.
 
 `SldvGenerationResult`에는 mode, source/effective 파일, `sldvrun` status·실행 시간, `Tmax`와 실패 사유를 기록하고, `SldvScenarioResult`에는 원본 TestCase 번호·이름, 생성 Scenario, 원래 종료 시간, `Tmax`, parameter override 수를 기록합니다.
 
@@ -140,6 +140,7 @@ UT_REQ_{CUTName}_002
 - Signal Editor `OutputAfterFinalValue = Holding final value`
 - TestCase마다 같은 이름의 Signal Editor Scenario, Assessment Scenario 및 Table Iteration 생성
 - SLDV parameter value를 해당 Iteration의 variable override로 적용
+- SLDV에 없는 Harness 외부 입력은 원래 `ActiveScenario` 요소·시계열을 각 Scenario에 유지
 
 따라서 종료 시간이 각각 `10.1`, `1.0`초인 경우 StopTime과 전이는 `10.1`초이며, 짧은 입력은 `1.0~10.1`초 구간에서 마지막 값을 유지합니다. `OFF`는 기존 단일 `_001` workflow를 그대로 사용합니다.
 
@@ -210,21 +211,21 @@ cfg.OverwriteTestFile = false;
 
 Test File, Test Suite, Test Case에 coverage recording을 활성화합니다.
 
-direct Inport가 있는 CUT의 `Iteration 1`:
+`OFF` 모드에서 direct Inport가 있는 CUT의 `Iteration 1`:
 
 ```text
 SignalEditorScenario = UT_REQ_{CUTName}_001
 TestSequenceScenario = UT_REQ_{CUTName}_001
 ```
 
-direct Inport가 없는 CUT의 `Iteration 1`:
+`OFF` 모드에서 direct Inport가 없는 CUT의 `Iteration 1`:
 
 ```text
 SignalEditorScenario is not assigned
 TestSequenceScenario = UT_REQ_{CUTName}_001
 ```
 
-SLDV 모드에서는 기존 Test Case가 있어도 해당 Test Case의 Table Iteration만 완전 초기화한 뒤 Scenario 수만큼 다시 생성합니다. 다른 Test Case는 보존합니다. 각 Iteration 이름과 `SignalEditorScenario`, `TestSequenceScenario`는 같은 `UT_REQ_{CUTName}_{NNN}` 값을 사용합니다.
+SLDV 모드에서는 기존 Test Case가 있어도 해당 Test Case의 Table Iteration만 완전 초기화한 뒤 Scenario 수만큼 다시 생성합니다. 다른 Test Case는 보존합니다. direct CUT Inport 유무와 관계없이 각 Iteration 이름, `SignalEditorScenario`, `TestSequenceScenario`는 같은 `UT_REQ_{CUTName}_{NNN}` 값을 사용합니다.
 
 ## Test execution and expected-value update
 

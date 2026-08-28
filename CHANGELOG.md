@@ -2,6 +2,10 @@
 
 ## v0.9.6 Candidate
 
+- Updated SLDV input handling to use the Harness Signal Editor `ActiveScenario` as the interface template. SLDV Dataset inputs may be a compatible subset; Harness-only external inputs are retained in every generated scenario, while unexpected SLDV inputs fail before mutation.
+- Removed the SLDV direct-CUT-Inport gate from Signal Editor and Test Manager setup. SLDV Iterations now always bind both `SignalEditorScenario` and `TestSequenceScenario` to the matching `UT_REQ_*` name.
+- Extended scenario alignment validation to check both Iteration scenario parameters in addition to scenario names and counts.
+
 - Added row-level `SldvMode` (`OFF`, `FILE`, `GENERATE`) and `SldvDataFile` management columns with backward-compatible `OFF` defaults.
 - Added SLDV generation using a deep copy of the Top Model Design Verifier settings, target-specific latest-result storage, and success-only replacement of generated data files.
 - Added preflight validation for subsystem ownership, effective test cases, time vectors, Dataset interfaces, direct CUT Inports, iteration parameter metadata/application, and shared Signal Editor MAT files.
