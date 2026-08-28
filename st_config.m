@@ -137,6 +137,11 @@ cfg.SldvDir = ...
 cfg.SldvManifestFile = ...
     fullfile(cfg.SldvDir, 'sldv_manifest.mat');
 
+% Round each CUT-level SLDV Tmax upward to this time grid. This absorbs
+% floating-point tails such as 1.060000001 without ever ending a Harness
+% before the source TestCase does. Set to [] to preserve raw end times.
+cfg.SldvTmaxResolution = 0.01;
+
 
 %% ============================================================
 % Harness
@@ -282,5 +287,13 @@ cfg.VerboseLogging = true;
 
 cfg.ResultDir = ...
     fullfile(rootDir, 'result');
+
+% TestManagement.xlsx is an input-only management file during the normal
+% workflow. Result tables are written as standalone INI reports instead.
+% Set false when no result files should be created.
+cfg.SaveResultFiles = true;
+
+cfg.ResultReportDir = ...
+    fullfile(cfg.ResultDir, 'reports');
 
 end

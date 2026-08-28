@@ -82,7 +82,7 @@ st_run_after_harness
 
 `st_run_after_harness`는 기존 Harness 존재 여부를 검증한 뒤 SLDV 준비 단계부터 실행합니다.
 
-각 단계는 결과를 `result` 폴더에 CSV로 기록하고, 가능한 경우 `TestManagement.xlsx`의 결과 Sheet에도 기록합니다.
+일반 workflow는 `TestManagement.xlsx`를 결과로 수정하지 않습니다. 결과 저장은 `cfg.SaveResultFiles`로 선택하며, 기본값 `true`에서는 `result/reports`에 단계별 INI 파일로 기록합니다. `false`이면 결과 파일을 생성하지 않습니다.
 
 ## Harness creation
 
@@ -135,7 +135,7 @@ UT_REQ_{CUTName}_002
 
 SLDV Scenario MAT는 Harness에 연결하기 전에 별도 임시 파일로 완성한다. 각 `UT_REQ_*`는 scalar `Simulink.SimulationData.Dataset` MAT 변수로 일반 저장되며, 저장 직후 다시 불러와 Dataset 클래스·요소 수·요소 값 형식(timeseries 또는 MATLAB struct)을 검증한다. 검증에 실패하면 Harness의 `Filename`과 기존 SLDV MAT는 변경하지 않는다. 검증 성공 후에만 대상 MAT를 교체하고 Harness를 재개방해 `options@ActiveScenario`와 `NumberOfScenarios`를 기록·검증한다. 이전에 실패한 실행이 `_sldv.mat`를 남겼더라도 원본 MAT의 실제 Dataset(우선 `InputScenario`)을 템플릿으로 자동 선택해 복구한다.
 
-해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다.
+해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다. 기본 `cfg.SldvTmaxResolution = 0.01`은 원본 최장 시간보다 작아지지 않도록 0.01초 단위로 올림합니다. 따라서 `1.06`은 그대로 `1.06`이고 `1.060000001`은 `1.07`이 됩니다. 결과에는 원본 `RawTmax`와 적용된 `Tmax`를 함께 기록합니다. `[]`로 설정하면 올림을 끌 수 있습니다.
 
 - Harness `StopTime = Tmax`
 - 모든 Assessment 전이 `after(Tmax, sec)`
