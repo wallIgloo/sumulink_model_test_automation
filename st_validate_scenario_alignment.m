@@ -428,13 +428,16 @@ for i = 1:numel(iterations)
 
     testParams = iterations(i).TestParams;
 
-    if ~test_param_matches_scenario( ...
+    % R2025b exposes the Signal Editor scenario iteration parameter as
+    % SignalBuilderGroup in TestParams.  Earlier releases and the creation
+    % API use SignalEditorScenario. Both names represent the same binding.
+    if ~test_param_matches_any_scenario( ...
             testParams, ...
-            'SignalEditorScenario', ...
+            {'SignalEditorScenario', 'SignalBuilderGroup'}, ...
             scenarioName)
         error( ...
             ['Test Manager Iteration %s does not bind ' ...
-             'SignalEditorScenario to the same scenario. TestParams=%s'], ...
+             'the Signal Editor scenario to the same scenario. TestParams=%s'], ...
             scenarioName, ...
             test_params_to_text(testParams));
     end
@@ -454,6 +457,20 @@ for i = 1:numel(iterations)
     testSequenceCount = testSequenceCount + 1;
 end
 
+end
+
+
+function tf = test_param_matches_any_scenario( ...
+        testParams, parameterNames, scenarioName)
+
+tf = false;
+for i = 1:numel(parameterNames)
+    if test_param_matches_scenario( ...
+            testParams, parameterNames{i}, scenarioName)
+        tf = true;
+        return;
+    end
+end
 end
 
 

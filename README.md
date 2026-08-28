@@ -229,6 +229,8 @@ TestSequenceScenario = UT_REQ_{CUTName}_001
 
 SLDV 모드에서는 기존 Test Case가 있어도 해당 Test Case의 Table Iteration만 완전 초기화한 뒤 Scenario 수만큼 다시 생성합니다. 다른 Test Case는 보존합니다. direct CUT Inport 유무와 관계없이 각 Iteration 이름, `SignalEditorScenario`, `TestSequenceScenario`는 같은 `UT_REQ_{CUTName}_{NNN}` 값을 사용합니다.
 
+MATLAB R2025b의 `Iteration.TestParams` 표시에서는 `SignalEditorScenario`가 `SignalBuilderGroup`으로 나타날 수 있다. 두 이름은 같은 Signal Editor Scenario 연결을 의미하며, 정렬 검증은 둘 중 어느 표기든 허용한다.
+
 ## Test execution and expected-value update
 
 기본 실행 설정:
