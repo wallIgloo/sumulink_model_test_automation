@@ -178,6 +178,11 @@ for i = 1:n
             templateMatPath = ...
                 sldv_template_source_mat_path(matPath);
 
+            templateScenarioName = ...
+                sldv_template_scenario_name( ...
+                    templateMatPath, ...
+                    templateScenarioName);
+
             st_log(cfg, 'DEBUG', ...
                 ['[SignalEditor %d/%d] loading Harness input template | ' ...
                  'scenario=%s | file=%s'], ...
@@ -582,6 +587,55 @@ if length(baseName) >= length(suffix) && ...
 end
 
 templateMatPath = char(java.io.File(currentMatPath).getCanonicalPath());
+end
+
+
+function scenarioName = sldv_template_scenario_name(matPath, preferredName)
+%SLDV_TEMPLATE_SCENARIO_NAME Select an actual Dataset from a template MAT.
+%
+% When a Harness already points at *_sldv.mat, its ActiveScenario is a
+% UT_REQ name. The original sibling MAT is intentionally a stable input
+% template and normally exposes InputScenario instead, so the prior active
+% name cannot be required there.
+
+preferredName = char(preferredName);
+variables = whos('-file', matPath);
+variableNames = {variables.name};
+
+candidateNames = variableNames;
+
+validNames = {};
+for i = 1:numel(candidateNames)
+    candidateName = candidateNames{i};
+    try
+        loaded = load(matPath, candidateName);
+        value = loaded.(candidateName);
+        if isa(value, 'Simulink.SimulationData.Dataset') && ...
+                isscalar(value) && value.numElements > 0
+            validNames{end + 1} = candidateName; %#ok<AGROW>
+        end
+    catch
+    end
+end
+
+if any(strcmp(validNames, preferredName))
+    scenarioName = preferredName;
+    return;
+end
+
+if any(strcmp(validNames, 'InputScenario'))
+    scenarioName = 'InputScenario';
+    return;
+end
+
+if numel(validNames) == 1
+    scenarioName = validNames{1};
+    return;
+end
+
+error(['Cannot choose a unique Signal Editor template scenario. ' ...
+    'Preferred=%s, Valid=[%s], File=%s'], ...
+    preferredName, strjoin(validNames, ', '), matPath);
 end
 
 
