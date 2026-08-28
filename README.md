@@ -137,6 +137,8 @@ SLDV Scenario MAT는 Harness에 연결하기 전에 별도 임시 파일로 완�
 
 해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다. 기본 `cfg.SldvTmaxResolution = 0.01`은 원본 최장 시간보다 작아지지 않도록 0.01초 단위로 올림합니다. 따라서 `1.06`은 그대로 `1.06`이고 `1.060000001`은 `1.07`이 됩니다. 결과에는 원본 `RawTmax`와 적용된 `Tmax`를 함께 기록합니다. `[]`로 설정하면 올림을 끌 수 있습니다.
 
+시간값이 화면 표시와 다르다고 의심되면 `st_diagnose_sldv_timing`을 실행한다. 이 읽기 전용 진단은 원본 `sldvData.TestCases.timeValues`와 `sldvsimdata`가 변환한 각 Dataset element의 시간축을 17자리 및 binary 표현으로 비교하고 `result/reports/SldvTiming*.ini`에 기록한다.
+
 - Harness `StopTime = Tmax`
 - 모든 Assessment 전이 `after(Tmax, sec)`
 - Signal Editor `OutputAfterFinalValue = Holding final value`
