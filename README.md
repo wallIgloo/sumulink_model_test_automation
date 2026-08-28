@@ -133,7 +133,7 @@ UT_REQ_{CUTName}_002
 ...
 ```
 
-새 Signal Editor MAT를 연결한 직후에는 기존 템플릿 Scenario(일반적으로 `InputScenario`)가 먼저 표시됩니다. 자동화는 이를 정상 중간 상태로 확인한 뒤, 연결된 파일에서 첫 템플릿 Scenario를 `UT_REQ_*_001`로 변경하고 나머지 SLDV Scenario를 추가한 후 재로딩합니다. 따라서 첫 Filename 재연결에서 `UT_REQ_*`가 보이지 않는 것은 그 자체로 오류가 아닙니다.
+SLDV Scenario MAT는 Harness에 연결하기 전에 별도 임시 파일로 완성한다. 각 `UT_REQ_*`는 scalar `Simulink.SimulationData.Dataset` MAT 변수로 일반 저장되며, 저장 직후 다시 불러와 Dataset 클래스·요소 수·요소 값 형식(timeseries 또는 MATLAB struct)을 검증한다. 검증에 실패하면 Harness의 `Filename`과 기존 SLDV MAT는 변경하지 않는다. 검증 성공 후에만 대상 MAT를 교체하고 Harness를 재개방해 `options@ActiveScenario`와 `NumberOfScenarios`를 기록·검증한다. 이전에 실패한 실행이 `_sldv.mat`를 남겼더라도, 원래 MAT의 `InputScenario`를 템플릿으로 사용해 복구할 수 있다.
 
 해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다.
 
