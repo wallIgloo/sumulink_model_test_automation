@@ -142,6 +142,15 @@ cfg.SldvManifestFile = ...
 % before the source TestCase does. Set to [] to preserve raw end times.
 cfg.SldvTmaxResolution = 0.01;
 
+% true:
+%   When SldvMode=GENERATE targets a non-atomic Subsystem, temporarily set
+%   TreatAsAtomicUnit=on only while sldvrun executes. The original block
+%   setting and the model Dirty state are restored afterward.
+%
+% false:
+%   Require the CUT to already have TreatAsAtomicUnit=on.
+cfg.AutoEnableAtomicForSldvGenerate = true;
+
 
 %% ============================================================
 % Harness
