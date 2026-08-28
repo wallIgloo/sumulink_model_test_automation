@@ -133,6 +133,8 @@ UT_REQ_{CUTName}_002
 ...
 ```
 
+새 Signal Editor MAT를 연결한 직후에는 기존 템플릿 Scenario(일반적으로 `InputScenario`)가 먼저 표시됩니다. 자동화는 이를 정상 중간 상태로 확인한 뒤, 연결된 파일에서 첫 템플릿 Scenario를 `UT_REQ_*_001`로 변경하고 나머지 SLDV Scenario를 추가한 후 재로딩합니다. 따라서 첫 Filename 재연결에서 `UT_REQ_*`가 보이지 않는 것은 그 자체로 오류가 아닙니다.
+
 해당 CUT의 최장 TestCase 종료 시각을 `Tmax`로 사용합니다.
 
 - Harness `StopTime = Tmax`
