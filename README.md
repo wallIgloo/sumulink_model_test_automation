@@ -246,6 +246,8 @@ expected-value updater는 Failed Iteration만 처리합니다. Assessment의 `ve
 
 SLDV Iteration은 각 Scenario의 결과를 개별 처리하고 `Tmax` 시점의 실제값을 사용합니다. 실행 직후 `getVerifyRuns` 결과에서 활성 Scenario의 `step2` verify가 없거나 `Untested`이면 tail time을 추가하지 않고 timing 실패로 기록합니다.
 
+`cfg.OnlyEnabled = true`일 때 실행 대상은 관리 파일에서 `Enabled=true`인 행의 `TestCaseName`으로 제한됩니다. 실행 중에는 해당 Test Case만 임시로 Enabled로 두고 기존에 남아 있는 다른 Test Case는 모두 Disabled 처리하며, 종료·오류 뒤에는 원래 Enabled 상태를 복원합니다.
+
 ```text
 Assessment symbol
 -> positional Assessment/Harness mapping

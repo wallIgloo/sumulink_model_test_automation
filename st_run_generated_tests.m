@@ -82,11 +82,25 @@ end
 % 1차 실행
 %% ============================================================
 
-fprintf('\nEnabled Test Case 실행 시작...\n');
+% run(tf)는 Test File의 모든 Enabled Test Case를 실행한다. 관리
+% 파일에서 Enable=true로 선택한 Target만 이번 실행 범위로 강제하고,
+% 함수 종료 시 원래 Enabled 상태를 복원한다.
+[runTestCases, runScopeResult] = ...
+    st_get_run_test_cases(tf);
+
+runScopeCleanup = ...
+    st_apply_run_test_case_scope(tf, runTestCases); %#ok<NASGU>
+
+selectedNames = string(runScopeResult.TestCaseName( ...
+    runScopeResult.WillRun));
+
+fprintf('\nSelected Test Case 실행 시작 (%d): %s\n', ...
+    numel(runTestCases), char(strjoin(selectedNames, ', ')));
 
 st_log(cfg, 'DEBUG', ...
-    ['run(tf) start. Test Manager execution may stay inside this call ' ...
-     'for a long time.']);
+    ['run(tf) start | selected Test Cases=%d [%s]. ' ...
+     'Test Manager execution may stay inside this call for a long time.'], ...
+    numel(runTestCases), char(strjoin(selectedNames, ', ')));
 
 runTimer = tic;
 
@@ -97,7 +111,7 @@ st_log(cfg, 'DEBUG', ...
     'run(tf) returned | elapsed=%.3f sec', ...
     toc(runTimer));
 
-fprintf('Enabled Test Case 실행 완료\n');
+fprintf('Selected Test Case 실행 완료\n');
 
 verifyTimingResult = st_validate_sldv_verify_results(resultObj);
 if ~isempty(verifyTimingResult) && any(verifyTimingResult.Status == 'FAIL')
